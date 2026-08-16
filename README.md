@@ -1,0 +1,41 @@
+# IgrejaHub — Frontend
+
+SaaS de gestão para múltiplas igrejas. Frontend completo em React + TypeScript + Vite + Tailwind CSS, com dados 100% mockados (sem backend, API ou autenticação real).
+
+## Rodando o projeto
+
+```bash
+npm install
+npm run dev
+```
+
+Abra http://localhost:5173 — a rota inicial redireciona para `/login`.
+
+## Fluxo de navegação
+
+`/login` → `/selecionar-igreja` → `/dashboard` → demais módulos pelo menu lateral.
+
+## Stack
+
+- React 18 + TypeScript + Vite
+- Tailwind CSS (paleta de marca configurada em `tailwind.config.js`)
+- React Router (rotas reais para todas as telas)
+- Recharts (gráficos do dashboard e financeiro)
+- lucide-react (ícones)
+
+## Estrutura
+
+```
+src/
+  components/
+    ui/        -> Design system (Button, Card, Table, Modal, Tabs, Badge, Input, etc.)
+    layout/    -> Sidebar, Header, Layout
+  data/        -> Mocks (membros, congregações, financeiro, patrimônio, usuários, relatórios)
+  pages/       -> Uma página por rota
+  lib/         -> Helpers (formatação, contexto de igreja/role selecionada)
+  types/       -> Tipagens compartilhadas
+```
+
+## Próximos passos (backend)
+
+Os arquivos em `src/data/*` foram organizados para serem substituídos por chamadas de API sem exigir mudanças na camada de UI — troque as constantes exportadas por hooks de fetch (React Query, SWR, etc.) mantendo os mesmos tipos em `src/types`.

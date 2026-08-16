@@ -1,0 +1,13 @@
+// src/services/index.ts
+export { authService, type AuthUser, type LoginPayload } from './auth.service'
+export { membersService, type Member, type CreateMemberPayload } from './members.service'
+export { congregationsService, type Congregation } from './congregations.service'
+export { financeService, type Transaction, type CreateTransactionPayload } from './finance.service'
+export { assetsService, type Asset, type CreateAssetPayload } from './assets.service'
+export { accountingService, type JournalEntry, type CreateJournalEntryPayload } from './accounting.service'
+export { dashboardService, type DashboardMetrics } from './dashboard.service'
+export { usersService, type User, type CreateUserPayload } from './users.service'
+export { reportsService, type ReportJob } from './reports.service'
+export { settingsService, type OrganizationSettings } from './settings.service'
+export { billingService, type Plan, type Subscription, type Usage } from './billing.service'
+export * from './churches.service'
