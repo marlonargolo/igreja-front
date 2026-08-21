@@ -1,131 +1,199 @@
-// src/pages/Subscription.tsx
-import { useEffect, useState } from 'react'
-import { Check } from 'lucide-react'
+import { useState } from 'react'
+import { Check, Plus, X } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
-import { useToast } from '@/hooks/useToast'
-import { billingService, type Plan, type Subscription, type Usage } from '@/services'
+import { Input, Select } from '@/components/ui/Input'
+import { Modal } from '@/components/ui/Modal'
+import { useToast } from '@/components/ui/Extras'
 import { cn } from '@/lib/format'
 
+interface Plan {
+  id: string
+  name: string
+  price: number
+  maxMembers: number
+  maxCongregations: number
+  maxUsers: number
+  features: string[]
+}
+
+const PLANOS_DEFAULT: Plan[] = [
+  {
+    id: 'basic',
+    name: 'Básico',
+    price: 79,
+    maxMembers: 100,
+    maxCongregations: 1,
+    maxUsers: 3,
+    features: ['Dashboard', 'Membros', 'Secretaria', 'Relatórios básicos'],
+  },
+  {
+    id: 'pro',
+    name: 'Profissional',
+    price: 149,
+    maxMembers: 500,
+    maxCongregations: 5,
+    maxUsers: 10,
+    features: ['Tudo do Básico', 'Tesouraria completa', 'Patrimônio', 'Relatórios avançados'],
+  },
+  {
+    id: 'premium',
+    name: 'Premium Multi',
+    price: 299,
+    maxMembers: 9999,
+    maxCongregations: 999,
+    maxUsers: 999,
+    features: ['Tudo do Profissional', 'Contabilidade', 'Multi-congregações ilimitadas', 'Suporte prioritário', 'Exportação contábil'],
+  },
+]
+
 export default function Subscription() {
-  const { showToast } = useToast()
-  const [plans, setPlans] = useState<Plan[]>([])
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
-  const [usage, setUsage] = useState<Usage | null>(null)
-  const [loading, setLoading] = useState(true)
+  const showToast = useToast()
+  const [plans, setPlans] = useState<Plan[]>(PLANOS_DEFAULT)
+  const [currentPlan] = useState('premium')
+  const [openNew, setOpenNew] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [newPlan, setNewPlan] = useState({
+    name: '',
+    price: '',
+    maxMembers: '100',
+    maxCongregations: '1',
+    maxUsers: '5',
+    features: '',
+  })
 
-  useEffect(() => {
-    Promise.all([
-      billingService.listPlans(),
-      billingService.getSubscription(),
-      billingService.getUsage(),
-    ])
-      .then(([plansData, subData, usageData]) => {
-        setPlans(plansData)
-        setSubscription(subData)
-        setUsage(usageData)
-      })
-      .catch(() => showToast('mensagem'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  if (loading) {
-    return (
-      <Layout crumbs={[{ label: 'Configurações', to: '/configuracoes' }, { label: 'Assinatura' }]} title="Assinatura e Plano">
-        <div className="flex items-center justify-center h-64">Carregando...</div>
-      </Layout>
-    )
+  async function handleCreatePlan(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newPlan.name || !newPlan.price) { showToast('Nome e preço são obrigatórios.'); return }
+    setSaving(true)
+    await new Promise(r => setTimeout(r, 800))
+    const plan: Plan = {
+      id: Date.now().toString(),
+      name: newPlan.name,
+      price: parseFloat(newPlan.price),
+      maxMembers: parseInt(newPlan.maxMembers),
+      maxCongregations: parseInt(newPlan.maxCongregations),
+      maxUsers: parseInt(newPlan.maxUsers),
+      features: newPlan.features.split('\n').filter(f => f.trim()),
+    }
+    setPlans(prev => [...prev, plan])
+    showToast(`Plano "${plan.name}" criado com sucesso.`)
+    setOpenNew(false)
+    setNewPlan({ name: '', price: '', maxMembers: '100', maxCongregations: '1', maxUsers: '5', features: '' })
+    setSaving(false)
   }
 
-  const currentPlan = subscription?.plan?.name || 'Plano Premium Multi'
-
   return (
-    <Layout crumbs={[{ label: 'Configurações', to: '/configuracoes' }, { label: 'Assinatura' }]} title="Assinatura e Plano">
+    <Layout
+      crumbs={[{ label: 'Administração' }, { label: 'Assinatura' }]}
+      title="Assinatura e Planos"
+      action={{ label: 'Novo Plano', icon: <Plus className="h-4 w-4" />, onClick: () => setOpenNew(true) }}
+    >
+      {/* Plano atual */}
       <Card className="border-2 border-brand-800 mb-8">
         <CardBody className="pt-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <h3 className="text-lg font-extrabold text-brand-900">{currentPlan}</h3>
+              <div className="flex items-center gap-2.5">
+                <h3 className="text-lg font-extrabold text-brand-900">
+                  {plans.find(p => p.id === currentPlan)?.name || 'Premium Multi'}
+                </h3>
                 <span className="text-[11px] font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded-md">Ativo</span>
               </div>
-              <p className="text-sm text-brand-300 mt-1">Renovação automática em {subscription?.currentPeriodEnd ? new Date(subscription.currentPeriodEnd).toLocaleDateString() : '—'}</p>
+              <p className="text-sm text-brand-300 mt-1">Renovação automática mensal</p>
             </div>
             <div className="flex items-center gap-4">
-              <span className="text-2xl font-extrabold text-brand-900">R$ {((subscription?.plan?.priceCents || 0) / 100).toFixed(2)}<span className="text-sm font-medium text-brand-300">/mês</span></span>
-              <Button onClick={() => showToast('mensagem')}>Alterar Plano</Button>
-            </div>
-          </div>
-
-          <div className="mt-6 pt-6 border-t border-brand-100">
-            <p className="text-sm font-bold text-brand-900 mb-4">Limite e Uso de Recursos</p>
-            <div className="grid sm:grid-cols-3 gap-6">
-              <UsageBar label="Membros Ativos" used={usage?.members.used || 0} total={usage?.members.total || 0} />
-              <UsageBar label="Congregações" used={usage?.congregations.used || 0} total={usage?.congregations.total || 0} />
-              <UsageBar label="Administradores" used={usage?.adminUsers.used || 0} total={usage?.adminUsers.total || 0} />
+              <span className="text-2xl font-extrabold text-brand-900">
+                R$ {plans.find(p => p.id === currentPlan)?.price.toFixed(2)}
+                <span className="text-sm font-medium text-brand-300">/mês</span>
+              </span>
+              <Button onClick={() => showToast('Entre em contato com o suporte para alterar o plano.')}>
+                Alterar Plano
+              </Button>
             </div>
           </div>
         </CardBody>
       </Card>
 
-      <div className="grid sm:grid-cols-3 gap-6">
-        {plans.map((p) => {
-          const isCurrent = p.name === currentPlan
+      {/* Lista de planos */}
+      <div className="grid md:grid-cols-3 gap-6 mb-8">
+        {plans.map(plan => {
+          const isCurrent = plan.id === currentPlan
           return (
-            <Card key={p.id} className={cn('p-6 flex flex-col', isCurrent && 'border-2 border-brand-800')}>
-              <h3 className={cn('font-bold', isCurrent ? 'text-brand-800' : 'text-brand-900')}>{p.name}</h3>
-              <p className="text-sm text-brand-300 mt-1 mb-4 min-h-[40px]">
-                {p.name === 'Plano Básico' && 'Perfeito para igrejas locais pequenas.'}
-                {p.name === 'Plano Profissional' && 'Recomendado para congregações em crescimento.'}
-                {p.name === 'Plano Premium Multi' && 'Para campos ministeriais extensos e redes.'}
-              </p>
-              <div className="mb-5">
-                <span className="text-3xl font-extrabold text-brand-900">R$ {(p.priceCents / 100).toFixed(2)}</span>
-                <span className="text-sm text-brand-300"> /mês</span>
-              </div>
-              <p className="text-sm font-semibold text-brand-900 mb-3">O plano inclui:</p>
-              <ul className="space-y-2 mb-6 flex-1">
-                <li className="flex items-start gap-2 text-sm text-brand-500"><Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" /> Até {p.maxMembers} membros</li>
-                <li className="flex items-start gap-2 text-sm text-brand-500"><Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" /> Até {p.maxCongregations} congregações</li>
-                <li className="flex items-start gap-2 text-sm text-brand-500"><Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" /> Até {p.maxUsers} usuários admin</li>
-                {p.features.map(f => (
-                  <li key={f.key} className="flex items-start gap-2 text-sm text-brand-500">
-                    <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" /> {f.label}
-                  </li>
-                ))}
-              </ul>
-              <Button
-                variant={isCurrent ? 'secondary' : 'outline'}
-                disabled={isCurrent}
-                className="w-full"
-                onClick={() => {
-                  billingService.changePlan(p.id)
-                    .then(() => showToast('mensagem'))
-                    .catch(() => sshowToast('mensagem'))
-                }}
-              >
-                {isCurrent ? 'Plano Atual' : 'Selecionar Plano'}
-              </Button>
+            <Card key={plan.id} className={cn('relative', isCurrent && 'border-2 border-brand-800')}>
+              {isCurrent && (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-800 text-white text-xs font-bold px-3 py-1 rounded-full">
+                  Plano Atual
+                </div>
+              )}
+              <CardBody className="pt-6">
+                <h3 className="font-extrabold text-brand-900 text-lg">{plan.name}</h3>
+                <p className="text-3xl font-extrabold text-brand-900 mt-2">
+                  R$ {plan.price.toFixed(2)}
+                  <span className="text-sm font-medium text-brand-300">/mês</span>
+                </p>
+                <div className="mt-4 space-y-1.5 text-sm text-brand-500">
+                  <p>✓ Até {plan.maxMembers === 9999 ? 'ilimitados' : plan.maxMembers} membros</p>
+                  <p>✓ Até {plan.maxCongregations === 999 ? 'ilimitadas' : plan.maxCongregations} congregações</p>
+                  <p>✓ Até {plan.maxUsers === 999 ? 'ilimitados' : plan.maxUsers} usuários</p>
+                </div>
+                <div className="mt-4 space-y-1.5">
+                  {plan.features.map(f => (
+                    <div key={f} className="flex items-center gap-2 text-sm text-brand-700">
+                      <Check className="h-3.5 w-3.5 text-green-500 shrink-0" />
+                      {f}
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  className="w-full mt-6"
+                  variant={isCurrent ? 'outline' : 'primary'}
+                  disabled={isCurrent}
+                  onClick={() => !isCurrent && showToast(`Para migrar para ${plan.name}, contate o suporte.`)}
+                >
+                  {isCurrent ? 'Plano Atual' : `Migrar para ${plan.name}`}
+                </Button>
+              </CardBody>
             </Card>
           )
         })}
       </div>
-    </Layout>
-  )
-}
 
-function UsageBar({ label, used, total }: { label: string; used: number; total: number }) {
-  const percentage = total > 0 ? (used / total) * 100 : 0
-  return (
-    <div>
-      <div className="flex items-center justify-between text-sm mb-1.5">
-        <span className="font-semibold text-brand-900">{label}</span>
-        <span className="text-brand-300">{used} / {total}</span>
-      </div>
-      <div className="h-2 rounded-full bg-brand-100 overflow-hidden">
-        <div className="h-full bg-brand-700 rounded-full" style={{ width: `${Math.min(percentage, 100)}%` }} />
-      </div>
-    </div>
+      {/* Modal criar plano */}
+      <Modal
+        open={openNew}
+        onClose={() => setOpenNew(false)}
+        title="Novo Plano de Assinatura"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setOpenNew(false)}>Cancelar</Button>
+            <Button onClick={handleCreatePlan} disabled={saving}>
+              {saving ? 'Criando...' : 'Criar Plano'}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleCreatePlan} className="space-y-4">
+          <Input label="Nome do Plano" value={newPlan.name} onChange={e => setNewPlan({ ...newPlan, name: e.target.value })} placeholder="Ex: Empresarial" required />
+          <Input label="Preço mensal (R$)" type="number" step="0.01" value={newPlan.price} onChange={e => setNewPlan({ ...newPlan, price: e.target.value })} required />
+          <div className="grid grid-cols-3 gap-3">
+            <Input label="Máx. Membros" type="number" value={newPlan.maxMembers} onChange={e => setNewPlan({ ...newPlan, maxMembers: e.target.value })} />
+            <Input label="Máx. Congregações" type="number" value={newPlan.maxCongregations} onChange={e => setNewPlan({ ...newPlan, maxCongregations: e.target.value })} />
+            <Input label="Máx. Usuários" type="number" value={newPlan.maxUsers} onChange={e => setNewPlan({ ...newPlan, maxUsers: e.target.value })} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-brand-900 mb-1.5">Funcionalidades (uma por linha)</p>
+            <textarea
+              rows={5}
+              value={newPlan.features}
+              onChange={e => setNewPlan({ ...newPlan, features: e.target.value })}
+              placeholder="Dashboard&#10;Membros&#10;Tesouraria&#10;..."
+              className="w-full px-3.5 py-2.5 rounded-lg border border-brand-100 text-sm outline-none focus:border-brand-500 resize-none"
+            />
+          </div>
+        </form>
+      </Modal>
+    </Layout>
   )
 }

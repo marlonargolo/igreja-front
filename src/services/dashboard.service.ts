@@ -23,9 +23,10 @@ export interface DashboardParams {
 
 export const dashboardService = {
   async getMetrics(params: DashboardParams = {}) {
-    const cleanParams: Record<string, any> = {}
-    if (params.startDate) cleanParams.startDate = params.startDate
-    if (params.endDate) cleanParams.endDate = params.endDate
+    const cleanParams: Record<string, any> = {
+      startDate: params.startDate || `${new Date().getFullYear() - 1}-01-01`,
+      endDate: params.endDate || `${new Date().getFullYear()}-12-31`,
+    }
     if (params.churchId) cleanParams.churchId = params.churchId
     if (params.congregationId) cleanParams.congregationId = params.congregationId
 

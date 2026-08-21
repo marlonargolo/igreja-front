@@ -29,10 +29,9 @@ export const churchesService = {
       size: params.size ?? 50,
       search: params.search,
     })
-    // Backend pode retornar Spring Page (content) ou PaginatedResponse (data)
     const raw = res.data
-    const list = raw?.content || raw?.data || raw || []
-    return Array.isArray(list) ? list : [] as Church[]
+    const list = raw?.data || raw?.content || raw || []
+    return Array.isArray(list) ? list as Church[] : []
   },
 
   async get(id: number) {
@@ -52,5 +51,29 @@ export const churchesService = {
 
   async remove(id: number) {
     await http.delete(`/churches/${id}`)
+  },
+
+  /**
+   * Faz upload da logo para o backend via multipart/form-data.
+   * O backend salva o arquivo em /app/uploads/logos/ e retorna a URL.
+   */
+  async uploadLogo(churchId: number, file: File): Promise<string> {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const token = localStorage.getItem('access_token') ||
+      sessionStorage.getItem('access_token') || ''
+
+    // http.ts não suporta FormData nativamente — chamada direta via fetch
+    const BASE = import.meta.env.VITE_API_BASE_URL || 'http://2.24.80.229:3000/api'
+    const res = await fetch(`${BASE}/churches/${churchId}/logo`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    })
+
+    if (!res.ok) throw new Error('Falha ao fazer upload da logo.')
+    const json = await res.json()
+    return json?.data?.logoUrl || ''
   },
 }

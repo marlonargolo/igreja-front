@@ -1,10 +1,8 @@
-// src/pages/Finance.tsx
 import { useMemo, useState, useEffect } from 'react'
-import { Plus, TrendingUp, TrendingDown, Wallet, PiggyBank } from 'lucide-react'
+import { Plus, ArrowLeftRight, Edit2, Trash2, Paperclip } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
-import { MetricCard } from '@/components/ui/Misc'
-import { Tabs } from '@/components/ui/Tabs'
 import { Table, Thead, Tr, Th, Td } from '@/components/ui/Table'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
@@ -13,80 +11,144 @@ import { Input, Select } from '@/components/ui/Input'
 import { formatCurrency } from '@/lib/format'
 import { useToast } from '@/components/ui/Extras'
 import { financeService, type Transaction } from '@/services'
-import { dashboardService } from '@/services/dashboard.service'
+import { http } from '@/lib/http'
+import type { ApiSuccess } from '@/types/api'
+
+const CATEGORIAS_TRANSFERENCIA = [
+  'Transferência entre Contas',
+  'Repasse à Sede (Redízimo)',
+  'Transferência entre Congregações',
+]
+
+interface FinancialAccount {
+  id: number
+  name: string
+  type: string
+  bankName?: string
+  currentBalance?: number
+}
 
 export default function Finance() {
-  const [tab, setTab] = useState('Visão Geral')
+  const showToast = useToast()
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [summary, setSummary] = useState({ totalRevenue: 0, totalExpenses: 0, balance: 0 })
+  const [accounts, setAccounts] = useState<FinancialAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
-  const [newTx, setNewTx] = useState({ type: 'REVENUE', description: '', amount: '', date: '', categoryId: 1 })
   const [submitting, setSubmitting] = useState(false)
-  const showToast = useToast()
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [comprovante, setComprovante] = useState<File | null>(null)
+  const [form, setForm] = useState({
+    description: '',
+    amount: '',
+    date: new Date().toISOString().split('T')[0],
+    category: CATEGORIAS_TRANSFERENCIA[0],
+    contaOrigemId: '',
+    contaDestinoId: '',
+  })
 
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = String(today.getMonth() + 1).padStart(2, '0')
-  const firstDay = `${year - 1}-01-01`   // ano passado para pegar os dados de 2025
-  const lastDay = `${year}-12-31`
+  useEffect(() => { loadAll() }, [])
 
-  useEffect(() => {
-    loadData()
-  }, [tab])
-
-  async function loadData() {
+  async function loadAll() {
     setLoading(true)
     try {
-      const typeFilter = tab === 'Receitas' ? 'REVENUE' : tab === 'Despesas' ? 'EXPENSE' : undefined
-      const res = await financeService.list({
-        page: 0,
-        size: 20,
-        startDate: firstDay,
-        endDate: lastDay,
-        type: typeFilter,
-      })
-      setTransactions(Array.isArray(res.data) ? res.data : (res.data?.data || []))
-
-      // Buscar métricas do dashboard
-      const metrics = await dashboardService.getMetrics({ startDate: firstDay, endDate: lastDay })
-      setSummary({
-        totalRevenue: metrics.monthlyRevenue || 0,
-        totalExpenses: metrics.monthlyExpenses || 0,
-        balance: metrics.balance || 0,
-      })
-    } catch (err) {
-      showToast('mensagem')
+      const [txRes, accRes] = await Promise.all([
+        financeService.list({ size: 100, type: 'EXPENSE' }) as any,
+        http.get<ApiSuccess<any>>('/finance/accounts').catch(() => ({ data: [] })),
+      ])
+      const raw = txRes as any
+      const all = raw?.content || raw?.data || raw || []
+      setTransactions(all.filter((t: Transaction) => isTransfer(t)))
+      const accRaw = (accRes as any).data
+      const accList = accRaw?.data || accRaw?.content || accRaw || []
+      setAccounts(Array.isArray(accList) ? accList : [])
+    } catch {
+      showToast('Falha ao carregar transferências.')
     } finally {
       setLoading(false)
     }
   }
 
-  const filteredTx = useMemo(() => {
-    if (tab === 'Receitas') return transactions.filter(t => t.type === 'REVENUE')
-    if (tab === 'Despesas') return transactions.filter(t => t.type === 'EXPENSE')
-    return transactions
-  }, [transactions, tab])
+  function isTransfer(t: Transaction) {
+    const cat = (t.categoryName || t.description || '').toLowerCase()
+    return cat.includes('transfer') || cat.includes('repasse') || cat.includes('redízimo')
+  }
+
+  const total = useMemo(() => transactions.reduce((s, t) => s + Number(t.amount), 0), [transactions])
+
+  function resetForm() {
+    setForm({
+      description: '',
+      amount: '',
+      date: new Date().toISOString().split('T')[0],
+      category: CATEGORIAS_TRANSFERENCIA[0],
+      contaOrigemId: '',
+      contaDestinoId: '',
+    })
+    setComprovante(null)
+    setEditingId(null)
+  }
+
+  function openEdit(t: Transaction) {
+    setEditingId(t.id)
+    setForm({
+      description: t.description,
+      amount: String(t.amount),
+      date: t.transactionDate,
+      category: t.categoryName || CATEGORIAS_TRANSFERENCIA[0],
+      contaOrigemId: String((t as any).accountId || ''),
+      contaDestinoId: '',
+    })
+    setComprovante(null)
+    setOpen(true)
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm('Excluir esta transferência?')) return
+    try {
+      await financeService.delete(id)
+      showToast('Transferência excluída.')
+      loadAll()
+    } catch {
+      showToast('Falha ao excluir.')
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!form.amount) { showToast('Informe o valor.'); return }
+
+    const origemNome = accounts.find(a => String(a.id) === form.contaOrigemId)?.name || form.contaOrigemId
+    const destinoNome = accounts.find(a => String(a.id) === form.contaDestinoId)?.name || form.contaDestinoId
+    const desc = origemNome && destinoNome
+      ? `${form.category}: ${origemNome} → ${destinoNome}${form.description ? ' — ' + form.description : ''}`
+      : form.description || form.category
+
     setSubmitting(true)
     try {
-      await financeService.create({
-        churchId: 1, // substituir por lógica real
-        congregationId: undefined,
-        categoryId: newTx.categoryId,
-        type: newTx.type as 'REVENUE' | 'EXPENSE',
-        description: newTx.description,
-        amount: parseFloat(newTx.amount),
-        transactionDate: newTx.date || firstDay,
-      })
-      showToast('mensagem')
+      if (editingId) {
+        await financeService.update(editingId, {
+          description: desc,
+          amount: parseFloat(form.amount),
+          transactionDate: form.date,
+        } as any)
+        showToast('Transferência atualizada.')
+      } else {
+        await financeService.create({
+          churchId: 2,
+          type: 'EXPENSE',
+          description: desc,
+          amount: parseFloat(form.amount),
+          transactionDate: form.date,
+          categoryId: 1,
+          accountId: form.contaOrigemId ? Number(form.contaOrigemId) : 1,
+        } as any)
+        showToast('Transferência registrada.')
+      }
       setOpen(false)
-      setNewTx({ type: 'REVENUE', description: '', amount: '', date: '', categoryId: 1 })
-      loadData()
-    } catch (err) {
-      showToast('mensagem')
+      resetForm()
+      loadAll()
+    } catch {
+      showToast('Falha ao salvar transferência.')
     } finally {
       setSubmitting(false)
     }
@@ -94,120 +156,141 @@ export default function Finance() {
 
   return (
     <Layout
-      crumbs={[{ label: 'Igreja Sede' }, { label: 'Financeiro' }]}
-      title="Painel Financeiro"
-      searchPlaceholder="Buscar transações..."
-      action={{ label: 'Nova Transação', icon: <Plus className="h-4 w-4" />, onClick: () => setOpen(true) }}
+      crumbs={[{ label: 'Tesouraria' }, { label: 'Transferências' }]}
+      title="Transferências"
+      action={{ label: 'Nova Transferência', icon: <Plus className="h-4 w-4" />, onClick: () => { resetForm(); setOpen(true) } }}
     >
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <MetricCard label="Receitas do Mês" value={formatCurrency(summary.totalRevenue)} icon={<TrendingUp className="h-4 w-4" />} />
-        <MetricCard label="Despesas do Mês" value={formatCurrency(summary.totalExpenses)} icon={<TrendingDown className="h-4 w-4" />} trendUp={false} />
-        <MetricCard label="Saldo do Mês" value={formatCurrency(summary.balance)} icon={<Wallet className="h-4 w-4" />} />
-        <MetricCard label="Receitas Acumuladas" value={formatCurrency(summary.totalRevenue)} icon={<PiggyBank className="h-4 w-4" />} />
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className="bg-white rounded-2xl border border-brand-100 shadow-card p-5">
+          <p className="text-xs text-brand-300 mb-1">Total Transferido</p>
+          <p className="text-2xl font-extrabold text-brand-900">{formatCurrency(total)}</p>
+        </div>
+        <div className="bg-white rounded-2xl border border-brand-100 shadow-card p-5">
+          <p className="text-xs text-brand-300 mb-1">Lançamentos</p>
+          <p className="text-2xl font-extrabold text-brand-900">{transactions.length}</p>
+        </div>
       </div>
 
-      <Tabs tabs={['Visão Geral', 'Receitas', 'Despesas', 'Transferências']} active={tab} onChange={setTab} className="mb-6" />
-
-      {tab !== 'Transferências' && (
-        <Card>
-          <CardHeader className="flex items-center justify-between">
-            <CardTitle>{tab === 'Visão Geral' ? 'Últimas Transações' : tab}</CardTitle>
-          </CardHeader>
-          <CardBody className="pt-2">
-            {loading ? (
-              <div className="py-8 text-center">Carregando...</div>
-            ) : filteredTx.length === 0 ? (
-              <div className="py-8 text-center text-brand-300">Nenhuma transação encontrada.</div>
-            ) : (
-              <Table>
-                <Thead>
-                  <tr>
-                    <Th>Data</Th><Th>Descrição</Th><Th>Categoria</Th><Th>Congregação</Th><Th>Valor</Th><Th>Status</Th>
-                  </tr>
-                </Thead>
-                <tbody>
-                  {filteredTx.map((t) => (
-                    <Tr key={t.id}>
-                      <Td className="text-brand-500">{new Date(t.transactionDate).toLocaleDateString()}</Td>
-                      <Td className="font-semibold">{t.description}</Td>
-                      <Td><Badge tone={t.type === 'REVENUE' ? 'green' : 'red'}>{t.categoryName}</Badge></Td>
-                      <Td className="text-brand-500">{t.congregationName || '—'}</Td>
-                      <Td className={`font-semibold ${t.type === 'EXPENSE' ? 'text-red-500' : 'text-green-600'}`}>
-                        {formatCurrency(t.amount)}
-                      </Td>
-                      <Td><Badge tone={t.status === 'CONFIRMED' ? 'green' : 'yellow'}>{t.status}</Badge></Td>
-                    </Tr>
-                  ))}
-                </tbody>
-              </Table>
-            )}
-          </CardBody>
-        </Card>
-      )}
-
-      {tab === 'Transferências' && (
-        <Card><CardBody className="pt-8 pb-10 text-center">
-          <p className="text-sm text-brand-300">Nenhuma transferência registrada entre congregações neste período.</p>
-        </CardBody></Card>
-      )}
+      <Card>
+        <CardHeader><CardTitle>Transferências Registradas</CardTitle></CardHeader>
+        <CardBody className="pt-2">
+          {loading ? (
+            <div className="py-8 text-center text-brand-300">Carregando...</div>
+          ) : transactions.length === 0 ? (
+            <div className="py-8 text-center text-brand-300">
+              Nenhuma transferência registrada.
+              <br />
+              <button onClick={() => { resetForm(); setOpen(true) }} className="mt-3 text-brand-700 font-semibold text-sm hover:underline">
+                Registrar agora
+              </button>
+            </div>
+          ) : (
+            <Table>
+              <Thead>
+                <tr><Th>Data</Th><Th>Descrição</Th><Th>Valor</Th><Th>Status</Th><Th>Ações</Th></tr>
+              </Thead>
+              <tbody>
+                {transactions.map(t => (
+                  <Tr key={t.id}>
+                    <Td>{new Date(t.transactionDate).toLocaleDateString('pt-BR')}</Td>
+                    <Td className="font-semibold">{t.description}</Td>
+                    <Td className="font-semibold">{formatCurrency(t.amount)}</Td>
+                    <Td><Badge tone={t.status === 'CONFIRMED' ? 'green' : 'yellow'}>{t.status}</Badge></Td>
+                    <Td>
+                      <div className="flex gap-1">
+                        <button onClick={() => openEdit(t)} className="p-1.5 rounded hover:bg-brand-50 text-brand-400" title="Editar">
+                          <Edit2 className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => handleDelete(t.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400" title="Excluir">
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+          )}
+        </CardBody>
+      </Card>
 
       <Modal
         open={open}
-        onClose={() => setOpen(false)}
-        title="Nova Transação"
+        onClose={() => { setOpen(false); resetForm() }}
+        title={editingId ? 'Editar Transferência' : 'Nova Transferência'}
         footer={
           <>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={handleSubmit} disabled={submitting}>
-              {submitting ? 'Salvando...' : 'Salvar Transação'}
+              {submitting ? 'Salvando...' : editingId ? 'Salvar' : 'Registrar'}
             </Button>
           </>
         }
       >
         <form onSubmit={handleSubmit} className="space-y-4">
           <Select
-            label="Tipo"
-            value={newTx.type}
-            onChange={(e) => setNewTx({ ...newTx, type: e.target.value })}
-          >
-            <option value="REVENUE">Receita</option>
-            <option value="EXPENSE">Despesa</option>
-          </Select>
-          <Input
-            label="Descrição"
-            value={newTx.description}
-            onChange={(e) => setNewTx({ ...newTx, description: e.target.value })}
-            required
-          />
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Valor (R$)"
-              type="number"
-              step="0.01"
-              value={newTx.amount}
-              onChange={(e) => setNewTx({ ...newTx, amount: e.target.value })}
-              required
-            />
-            <Input
-              label="Data"
-              type="date"
-              value={newTx.date || firstDay}
-              onChange={(e) => setNewTx({ ...newTx, date: e.target.value })}
-            />
-          </div>
-          <Select
             label="Categoria"
-            value={String(newTx.categoryId)}
-            onChange={(e) => setNewTx({ ...newTx, categoryId: Number(e.target.value) })}
-            required
+            value={form.category}
+            onChange={e => setForm({ ...form, category: e.target.value })}
           >
-            <option value="1">Dízimo</option>
-            <option value="2">Oferta</option>
-            <option value="3">Campanha</option>
-            <option value="4">Manutenção</option>
-            <option value="5">Utilidades</option>
-            <option value="6">Equipamentos</option>
+            {CATEGORIAS_TRANSFERENCIA.map(c => <option key={c} value={c}>{c}</option>)}
           </Select>
+
+          {/* Contas cadastradas */}
+          <div className="grid grid-cols-2 gap-4">
+            <Select
+              label="Conta Origem"
+              value={form.contaOrigemId}
+              onChange={e => setForm({ ...form, contaOrigemId: e.target.value })}
+            >
+              <option value="">— Selecione —</option>
+              {accounts.map(a => (
+                <option key={a.id} value={String(a.id)}>
+                  {a.name}{a.bankName ? ` (${a.bankName})` : ''}
+                </option>
+              ))}
+            </Select>
+            <Select
+              label="Conta Destino"
+              value={form.contaDestinoId}
+              onChange={e => setForm({ ...form, contaDestinoId: e.target.value })}
+            >
+              <option value="">— Selecione —</option>
+              {accounts
+                .filter(a => String(a.id) !== form.contaOrigemId)
+                .map(a => (
+                  <option key={a.id} value={String(a.id)}>
+                    {a.name}{a.bankName ? ` (${a.bankName})` : ''}
+                  </option>
+                ))
+              }
+            </Select>
+          </div>
+
+          <Input
+            label="Observação"
+            value={form.description}
+            onChange={e => setForm({ ...form, description: e.target.value })}
+            placeholder="Motivo ou referência (opcional)"
+          />
+
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Valor (R$)" type="number" step="0.01" min="0" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required />
+            <Input label="Data" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
+          </div>
+
+          <div>
+            <p className="text-sm font-semibold text-brand-900 mb-1.5 flex items-center gap-1.5">
+              <Paperclip className="h-3.5 w-3.5" /> Comprovante
+            </p>
+            <input
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={e => setComprovante(e.target.files?.[0] || null)}
+              className="text-sm text-brand-500"
+            />
+            {comprovante && <p className="text-xs text-brand-300 mt-1">{comprovante.name}</p>}
+          </div>
         </form>
       </Modal>
     </Layout>

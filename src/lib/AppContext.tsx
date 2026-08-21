@@ -8,7 +8,8 @@ interface AppState {
   user: AuthUser | null
   loading: boolean
   church: AuthChurch | null
-  setChurch: (c: AuthChurch) => void
+  setUser: (u: AuthUser | null) => void
+  setChurch: (c: AuthChurch | null) => void
   login: (email: string, password: string, remember?: boolean) => Promise<void>
   logout: () => Promise<void>
 }
@@ -20,8 +21,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [church, setChurchState] = useState<AuthChurch | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Ao carregar o app, se já existe access token válido, recupera o usuário
-  // autenticado via GET /auth/me (seção 11, passo 5).
   useEffect(() => {
     async function bootstrap() {
       if (!authService.isAuthenticated()) {
@@ -32,7 +31,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const me = await authService.me()
         setUser(me)
         const savedChurchId = localStorage.getItem(SELECTED_CHURCH_KEY)
-        const restored = me.churches.find((c) => c.id === savedChurchId)
+        const restored = me.churches?.find((c) => c.id === savedChurchId)
         if (restored) setChurchState(restored)
       } catch {
         tokenStore.clear()
@@ -49,22 +48,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   async function logout() {
-    await authService.logout()
+    try { await authService.logout() } catch {}
+    tokenStore.clear()
     setUser(null)
     setChurchState(null)
     localStorage.removeItem(SELECTED_CHURCH_KEY)
+    localStorage.removeItem('access_token')
+    localStorage.removeItem('refresh_token')
+    sessionStorage.clear()
+    // Forçar navegação para login
+    window.location.href = '/login'
   }
 
-  // O contexto de igreja escolhido é persistido localmente, mas o backend
-  // deve sempre revalidar em cada chamada que o usuário tem escopo para essa
-  // igreja/congregação (seção 3 e 18 — nunca confiar apenas no cliente).
-  function setChurch(c: AuthChurch) {
+  function setChurch(c: AuthChurch | null) {
     setChurchState(c)
-    localStorage.setItem(SELECTED_CHURCH_KEY, c.id)
+    if (c) localStorage.setItem(SELECTED_CHURCH_KEY, c.id)
+    else localStorage.removeItem(SELECTED_CHURCH_KEY)
   }
 
   return (
-    <AppCtx.Provider value={{ user, loading, church, setChurch, login, logout }}>
+    <AppCtx.Provider value={{ user, loading, church, setUser, setChurch, login, logout }}>
       {children}
     </AppCtx.Provider>
   )

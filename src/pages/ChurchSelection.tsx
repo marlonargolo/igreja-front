@@ -1,23 +1,32 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, Cloud, MapPin, Loader2 } from 'lucide-react'
+import { ChevronRight, Cloud, MapPin, Loader2, LogOut } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { useApp } from '@/lib/AppContext'
 import { churchesService, type Church } from '@/services/churches.service'
 import { useToast } from '@/components/ui/Extras'
 
+const ADMIN_ROLES = ['ROOT', 'ADMIN']
+
 export default function ChurchSelection() {
   const navigate = useNavigate()
-  const { user, setChurch } = useApp()
+  const { user, setChurch, logout } = useApp()
   const showToast = useToast()
   const [churches, setChurches] = useState<Church[]>([])
   const [loading, setLoading] = useState(true)
 
+  const isAdmin = user?.roles?.some(r => ADMIN_ROLES.includes(r)) ?? false
+
   useEffect(() => {
     churchesService.list({ page: 0, size: 50 })
-      .then(res => {
-        const list = res?.content || res?.data?.data || res?.data || []
-        setChurches(Array.isArray(list) ? list : [])
+      .then(list => {
+        // ROOT/ADMIN vê todas; demais vêem apenas a sua
+        if (isAdmin) {
+          setChurches(list)
+        } else {
+          // para perfis restritos, mostra apenas 1 (a da organização)
+          setChurches(list.slice(0, 1))
+        }
       })
       .catch(() => showToast('Falha ao carregar igrejas.'))
       .finally(() => setLoading(false))
@@ -26,6 +35,11 @@ export default function ChurchSelection() {
   function select(church: Church) {
     setChurch({ id: String(church.id), name: church.name, city: church.city || '', state: church.state || '' })
     navigate('/dashboard')
+  }
+
+  async function handleLogout() {
+    await logout()
+    navigate('/login')
   }
 
   return (
@@ -37,7 +51,7 @@ export default function ChurchSelection() {
           </div>
           <span className="font-extrabold text-lg text-brand-900">IgrejaHub</span>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3">
           <img
             src={`https://i.pravatar.cc/150?u=${user?.email || 'user'}`}
             className="h-9 w-9 rounded-full object-cover"
@@ -47,6 +61,13 @@ export default function ChurchSelection() {
             <p className="text-sm font-semibold text-brand-900 leading-tight">{user?.name || 'Usuário'}</p>
             <p className="text-xs text-brand-300">{user?.organizationName || ''}</p>
           </div>
+          <button
+            onClick={handleLogout}
+            className="p-2 text-brand-300 hover:text-brand-700 rounded-lg hover:bg-brand-50"
+            title="Sair"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </header>
 
@@ -55,7 +76,9 @@ export default function ChurchSelection() {
           Bem-vindo, {user?.name?.split(' ')[0] || 'Pastor'}!
         </h1>
         <p className="text-brand-300 mt-2 mb-10">
-          Selecione qual de suas igrejas deseja administrar hoje.
+          {isAdmin
+            ? 'Selecione qual congregação deseja administrar hoje.'
+            : 'Acesse sua congregação abaixo.'}
         </p>
 
         {loading ? (
@@ -64,17 +87,11 @@ export default function ChurchSelection() {
           </div>
         ) : churches.length === 0 ? (
           <div className="py-20 text-brand-300">
-            <p>Nenhuma igreja cadastrada para esta organização.</p>
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="mt-4 text-brand-700 font-semibold text-sm hover:underline"
-            >
-              Ir para o Dashboard
-            </button>
+            <p>Nenhuma congregação disponível para seu perfil.</p>
           </div>
         ) : (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 text-left">
-            {churches.map((church) => (
+            {churches.map(church => (
               <button
                 key={church.id}
                 onClick={() => select(church)}
@@ -82,11 +99,7 @@ export default function ChurchSelection() {
               >
                 <div className="h-36 w-full overflow-hidden bg-brand-50 flex items-center justify-center">
                   {church.logoUrl ? (
-                    <img
-                      src={church.logoUrl}
-                      alt={church.name}
-                      className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
+                    <img src={church.logoUrl} alt={church.name} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   ) : (
                     <Cloud className="h-12 w-12 text-brand-200" />
                   )}
@@ -114,15 +127,15 @@ export default function ChurchSelection() {
           </div>
         )}
 
-        {churches.length > 0 && (
+        {isAdmin && churches.length > 0 && (
           <button
             onClick={() => {
-              setChurch({ id: 'ALL', name: 'Todas as Igrejas', city: 'Multi', state: '' })
+              setChurch({ id: 'ALL', name: 'Todas as Congregações', city: 'Multi', state: '' })
               navigate('/dashboard')
             }}
             className="text-brand-700 font-semibold text-sm mt-10 hover:underline"
           >
-            Gerenciar todas as igrejas (Acesso Administrador)
+            Gerenciar todas as congregações (Acesso Administrador)
           </button>
         )}
       </div>
