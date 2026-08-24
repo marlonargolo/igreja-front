@@ -16,6 +16,10 @@ import { useToast } from '@/components/ui/Extras'
 import { formatCurrency } from '@/lib/format'
 import { financeService, type Transaction } from '@/services'
 import { churchesService, type Church } from '@/services/churches.service'
+import { FILES_BASE } from '@/services/churches.service'
+import { useConfig } from '@/lib/ConfigContext'
+import { Edit2, XCircle } from 'lucide-react'
+
 
 interface PeriodoFechado {
   mes: string
@@ -34,27 +38,29 @@ export default function Accounting() {
 }
 
 function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
+  const { config } = useConfig()
   const [tab, setTab] = useState('Visão Geral')
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [churches, setChurches] = useState<Church[]>([])
   const [churchFilter, setChurchFilter] = useState('Todas')
+  const [mesFilter, setMesFilter] = useState('')
   const [contaFilter, setContaFilter] = useState('Todas')
   const [typeFilter, setTypeFilter] = useState('Todas')
   const [loading, setLoading] = useState(true)
-
-  // Estados de lançamento confirmados (persistido em memória por sessão)
   const [confirmados, setConfirmados] = useState<Set<number>>(new Set())
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
-  // Lançamento selecionado para visualização
+  // Modal de conferência
   const [viewTx, setViewTx] = useState<Transaction | null>(null)
+  const [editMode, setEditMode] = useState(false)
+  const [editForm, setEditForm] = useState({ description: '', amount: '', notes: '' })
+  const [contadorNota, setContadorNota] = useState<Record<number, string>>({})
+  const [savingEdit, setSavingEdit] = useState(false)
 
-  // Comprovantes vinculados (mapa id → arquivo)
+  // Comprovantes
   const [comprovantes, setComprovantes] = useState<Map<number, { name: string; url: string }>>(new Map())
   const [uploadModalId, setUploadModalId] = useState<number | null>(null)
   const [uploadFile, setUploadFile] = useState<File | null>(null)
-
-  // Seleção múltipla
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
 
   // Fechamento
   const [mes, setMes] = useState(() => {
@@ -66,7 +72,7 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
   const [periodosFechados, setPeriodosFechados] = useState<PeriodoFechado[]>([])
   const [anoFiltro, setAnoFiltro] = useState(String(new Date().getFullYear()))
 
-  const contasUnicas = ['Todas', 'Caixa Geral', 'Banco Bradesco', 'Banco Itaú', 'Caixa Jovens']
+  const MESES_LABEL = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
   useEffect(() => { load() }, [])
 
@@ -78,48 +84,39 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
         churchesService.list(),
       ])
       const raw = txRes as any
-      const list = raw?.content || raw?.data || raw || []
-      setTransactions(Array.isArray(list) ? list : [])
+      setTransactions(Array.isArray(raw?.content || raw?.data || raw) ? raw?.content || raw?.data || raw : [])
       setChurches(churchList)
-    } catch {
-      showToast('Falha ao carregar dados.')
-    } finally {
-      setLoading(false)
-    }
+    } catch { showToast('Falha ao carregar dados.') }
+    finally { setLoading(false) }
   }
 
   const filtered = transactions.filter(t => {
     const matchChurch = churchFilter === 'Todas' || String((t as any).churchId) === churchFilter
-    const matchType   = typeFilter   === 'Todas' || t.type === typeFilter
-    const matchConta  = contaFilter  === 'Todas' || ((t as any).accountName || 'Caixa Geral') === contaFilter
-    return matchChurch && matchType && matchConta
+    const matchType   = typeFilter === 'Todas' || t.type === typeFilter
+    const matchConta  = contaFilter === 'Todas' || ((t as any).accountName || 'Caixa Geral') === contaFilter
+    const matchMes    = !mesFilter || t.transactionDate?.startsWith(mesFilter)
+    return matchChurch && matchType && matchConta && matchMes
   })
 
   const totalRevenue = filtered.filter(t => t.type === 'REVENUE').reduce((s, t) => s + Number(t.amount), 0)
   const totalExpense = filtered.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + Number(t.amount), 0)
-  const balance = totalRevenue - totalExpense
 
-  // Resumo por igreja com status de conciliação
   const byChurch = churches.map(c => {
     const txs = transactions.filter(t => String((t as any).churchId) === String(c.id))
     const rev = txs.filter(t => t.type === 'REVENUE').reduce((s, t) => s + Number(t.amount), 0)
     const exp = txs.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + Number(t.amount), 0)
-    // Conciliado = todos os lançamentos confirmados
     const allConfirmed = txs.length > 0 && txs.every(t => confirmados.has(t.id) || t.status === 'CONFIRMED')
     return { church: c, revenue: rev, expense: exp, balance: rev - exp, count: txs.length, conciliado: allConfirmed }
   }).filter(r => r.count > 0)
 
-  // Seleção
   function toggleSelect(id: number) {
     setSelectedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
   }
-
   function toggleSelectAll() {
     if (selectedIds.size === filtered.length) setSelectedIds(new Set())
     else setSelectedIds(new Set(filtered.map(t => t.id)))
   }
 
-  // Confirmar lançamento
   async function confirmarLancamento(id: number) {
     try {
       await financeService.confirm(id)
@@ -127,125 +124,163 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
       showToast('Lançamento confirmado.')
       load()
     } catch {
-      // fallback: marcar localmente
       setConfirmados(prev => new Set(prev).add(id))
-      showToast('Lançamento marcado como confirmado.')
+      showToast('Lançamento confirmado.')
     }
   }
 
+  function desconfirmarLancamento(id: number) {
+    setConfirmados(prev => { const n = new Set(prev); n.delete(id); return n })
+    showToast('Lançamento desconfirmado.')
+  }
+
   async function confirmarSelecionados() {
-    if (selectedIds.size === 0) { showToast('Selecione ao menos um lançamento.'); return }
+    if (!selectedIds.size) { showToast('Selecione ao menos um.'); return }
     for (const id of selectedIds) {
       try { await financeService.confirm(id) } catch {}
       setConfirmados(prev => new Set(prev).add(id))
     }
-    showToast(`${selectedIds.size} lançamento(s) confirmado(s).`)
+    showToast(`${selectedIds.size} confirmado(s).`)
     setSelectedIds(new Set())
     load()
   }
 
-  // Upload de comprovante
+  function openView(t: Transaction) {
+    setViewTx(t)
+    setEditMode(false)
+    setEditForm({ description: t.description, amount: String(t.amount), notes: (t as any).notes || '' })
+  }
+
+  async function saveEdit() {
+    if (!viewTx) return
+    setSavingEdit(true)
+    try {
+      await financeService.update(viewTx.id, {
+        description: editForm.description,
+        amount: parseFloat(editForm.amount),
+      } as any)
+      showToast('Lançamento atualizado.')
+      setEditMode(false)
+      load()
+    } catch { showToast('Falha ao salvar.') }
+    finally { setSavingEdit(false) }
+  }
+
+  async function deleteTx() {
+    if (!viewTx || !confirm('Excluir este lançamento?')) return
+    try {
+      await financeService.delete(viewTx.id)
+      showToast('Lançamento excluído.')
+      setViewTx(null)
+      load()
+    } catch { showToast('Falha ao excluir.') }
+  }
+
   function handleUpload() {
     if (!uploadFile || !uploadModalId) return
     const url = URL.createObjectURL(uploadFile)
     setComprovantes(prev => new Map(prev).set(uploadModalId, { name: uploadFile.name, url }))
-    showToast(`Comprovante "${uploadFile.name}" vinculado ao lançamento #${uploadModalId}.`)
+    showToast('Comprovante vinculado.')
     setUploadFile(null)
     setUploadModalId(null)
   }
 
-  // Fechamento — item 8: fechar o mês selecionado (não o anterior)
   async function fecharPeriodo() {
     if (!mes) { showToast('Selecione o mês.'); return }
-    const jaFechado = periodosFechados.find(p =>
-      p.mes === mes &&
-      (fechamentoIgreja === 'Todas' || p.igreja === churches.find(c => String(c.id) === fechamentoIgreja)?.name)
-    )
-    if (jaFechado) { showToast('Este período já está fechado.'); return }
-    setFechando(true)
-    await new Promise(r => setTimeout(r, 800))
     const [ano, mesNum] = mes.split('-')
     const mDate = new Date(Number(ano), Number(mesNum) - 1, 1)
     const label = mDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-    const igrejaNome = fechamentoIgreja === 'Todas'
-      ? 'Todas as Igrejas'
-      : churches.find(c => String(c.id) === fechamentoIgreja)?.name || 'Todas'
+    const igrejaNome = fechamentoIgreja === 'Todas' ? 'Todas as Igrejas' : churches.find(c => String(c.id) === fechamentoIgreja)?.name || 'Todas'
+    setFechando(true)
+    await new Promise(r => setTimeout(r, 800))
     setPeriodosFechados(prev => [...prev, {
-      mes,
-      label: label.charAt(0).toUpperCase() + label.slice(1),
-      fechadoEm: new Date().toISOString().split('T')[0],
-      igreja: igrejaNome,
+      mes, label: label.charAt(0).toUpperCase() + label.slice(1),
+      fechadoEm: new Date().toISOString().split('T')[0], igreja: igrejaNome,
     }])
-    showToast(`Período ${label} fechado com sucesso.`)
+    showToast(`Período ${label} fechado.`)
     setFechando(false)
   }
 
   function reabrirPeriodo(p: PeriodoFechado) {
     setPeriodosFechados(prev => prev.filter(x => !(x.mes === p.mes && x.igreja === p.igreja)))
-    showToast(`Período ${p.label} reaberto para correções.`)
+    showToast(`Período ${p.label} reaberto.`)
   }
 
   const periodosFiltradosPorAno = periodosFechados.filter(p => p.mes.startsWith(anoFiltro))
   const anosDisponiveis = [...new Set([...periodosFechados.map(p => p.mes.slice(0, 4)), anoFiltro])].sort().reverse()
 
+  // Item 10: resolver URL de imagem
+  function resolveUrl(url?: string) {
+    if (!url) return undefined
+    if (url.startsWith('http') || url.startsWith('blob:')) return url
+    return `${FILES_BASE}${url}`
+  }
+
   return (
     <Layout crumbs={[{ label: 'Contabilidade' }, { label: 'Fechamento Mensal' }]} title="Contabilidade">
       <Tabs tabs={['Visão Geral', 'Lançamentos', 'Fechamento']} active={tab} onChange={setTab} className="mb-6" />
 
-      {/* ── Visão Geral com status de conciliação — item 13 ── */}
+      {/* ── Visão Geral — item 13: sem totais no topo, igrejas compactas com clique ── */}
       {tab === 'Visão Geral' && (
-        <>
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-white rounded-2xl border border-brand-100 shadow-card p-5">
-              <p className="text-xs text-brand-300 mb-1">Total Receitas</p>
-              <p className="text-2xl font-extrabold text-green-600">{formatCurrency(totalRevenue)}</p>
-            </div>
-            <div className="bg-white rounded-2xl border border-brand-100 shadow-card p-5">
-              <p className="text-xs text-brand-300 mb-1">Total Despesas</p>
-              <p className="text-2xl font-extrabold text-red-500">{formatCurrency(totalExpense)}</p>
-            </div>
-            <div className="bg-white rounded-2xl border border-brand-100 shadow-card p-5">
-              <p className="text-xs text-brand-300 mb-1">Saldo Geral</p>
-              <p className={`text-2xl font-extrabold ${balance >= 0 ? 'text-brand-900' : 'text-red-500'}`}>{formatCurrency(balance)}</p>
-            </div>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-4">
-            {byChurch.map(r => (
-              <Card key={r.church.id}>
-                <CardBody className="pt-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Building2 className="h-5 w-5 text-brand-500" />
-                      <p className="font-bold text-brand-900">{r.church.name}</p>
+        <div>
+          <p className="text-sm text-brand-500 mb-4">
+            Clique em uma igreja para filtrar os lançamentos. Contador vê apenas igrejas atribuídas ao seu perfil.
+          </p>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {byChurch.map(r => {
+              const logo = resolveUrl(r.church.logoUrl)
+              return (
+                <button
+                  key={r.church.id}
+                  onClick={() => {
+                    setChurchFilter(String(r.church.id))
+                    setTab('Lançamentos')
+                  }}
+                  className="text-left bg-white rounded-xl border border-brand-100 p-4 hover:border-brand-400 hover:shadow-soft transition-all"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    {logo ? (
+                      <img
+                        src={logo}
+                        alt={r.church.name}
+                        className="h-10 w-10 rounded-lg object-cover border border-brand-100"
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                      />
+                    ) : (
+                      <div className="h-10 w-10 rounded-lg bg-brand-800 flex items-center justify-center">
+                        <span className="text-white font-bold text-sm">{r.church.name.charAt(0)}</span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-brand-900 text-sm truncate">{r.church.name}</p>
+                      <p className="text-xs text-brand-300">{r.count} lançamentos</p>
                     </div>
-                    {/* Status de conciliação — item 13 */}
                     <Badge tone={r.conciliado ? 'green' : 'yellow'}>
-                      {r.conciliado ? '✓ Conciliado' : '⏳ Pendente'}
+                      {r.conciliado ? 'Conciliado' : 'Pendente'}
                     </Badge>
                   </div>
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-brand-300 flex items-center gap-1"><TrendingUp className="h-3.5 w-3.5 text-green-500" /> Receitas</span>
-                      <span className="font-semibold text-green-600">{formatCurrency(r.revenue)}</span>
+                  <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div className="bg-green-50 rounded-lg py-1.5">
+                      <p className="text-green-600 font-bold">{formatCurrency(r.revenue)}</p>
+                      <p className="text-green-400">Receitas</p>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-brand-300 flex items-center gap-1"><TrendingDown className="h-3.5 w-3.5 text-red-400" /> Despesas</span>
-                      <span className="font-semibold text-red-500">{formatCurrency(r.expense)}</span>
+                    <div className="bg-red-50 rounded-lg py-1.5">
+                      <p className="text-red-500 font-bold">{formatCurrency(r.expense)}</p>
+                      <p className="text-red-400">Despesas</p>
                     </div>
-                    <div className="flex justify-between text-sm border-t border-brand-100 pt-2">
-                      <span className="font-bold text-brand-900">Saldo</span>
-                      <span className={`font-extrabold ${r.balance >= 0 ? 'text-brand-900' : 'text-red-500'}`}>{formatCurrency(r.balance)}</span>
+                    <div className={`${r.balance >= 0 ? 'bg-brand-50' : 'bg-red-50'} rounded-lg py-1.5`}>
+                      <p className={`font-bold ${r.balance >= 0 ? 'text-brand-900' : 'text-red-500'}`}>{formatCurrency(r.balance)}</p>
+                      <p className="text-brand-400">Saldo</p>
                     </div>
-                    <p className="text-xs text-brand-300 mt-1">{r.count} lançamentos</p>
                   </div>
-                </CardBody>
-              </Card>
-            ))}
+                </button>
+              )
+            })}
           </div>
-        </>
+        </div>
       )}
 
-      {/* ── Lançamentos — itens 5, 6, 7, 25 ── */}
+      {/* ── Lançamentos — itens 5, 7, 25 ── */}
       {tab === 'Lançamentos' && (
         <>
           <Card className="p-4 mb-4">
@@ -254,13 +289,23 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
                 <option value="Todas">Todas as Igrejas</option>
                 {churches.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
               </Select>
+              <Select label="Mês" value={mesFilter} onChange={e => setMesFilter(e.target.value)}>
+                <option value="">Todos os meses</option>
+                {Array.from({ length: 12 }, (_, i) => {
+                  const d = new Date()
+                  const y = d.getFullYear()
+                  const m = String(i + 1).padStart(2, '0')
+                  return <option key={m} value={`${y}-${m}`}>{MESES_LABEL[i]} {y}</option>
+                })}
+              </Select>
               <Select label="Conta" value={contaFilter} onChange={e => setContaFilter(e.target.value)}>
-                {contasUnicas.map(c => <option key={c} value={c}>{c}</option>)}
+                <option value="Todas">Todas as Contas</option>
+                {config.contasECaixas.map(c => <option key={c} value={c}>{c}</option>)}
               </Select>
               <Select label="Tipo" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
                 <option value="Todas">Receitas e Despesas</option>
-                <option value="REVENUE">Apenas Receitas</option>
-                <option value="EXPENSE">Apenas Despesas</option>
+                <option value="REVENUE">Receitas</option>
+                <option value="EXPENSE">Despesas</option>
               </Select>
             </div>
           </Card>
@@ -271,16 +316,12 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
               <Button size="sm" onClick={confirmarSelecionados}>
                 <Check className="h-3.5 w-3.5" /> Confirmar Selecionados
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setSelectedIds(new Set())}>
-                Limpar Seleção
-              </Button>
+              <Button size="sm" variant="outline" onClick={() => setSelectedIds(new Set())}>Limpar</Button>
             </div>
           )}
 
           <Card>
-            <CardHeader>
-              <CardTitle>{filtered.length} lançamentos</CardTitle>
-            </CardHeader>
+            <CardHeader><CardTitle>{filtered.length} lançamentos — Saldo: {formatCurrency(totalRevenue - totalExpense)}</CardTitle></CardHeader>
             <CardBody className="pt-2">
               {loading ? (
                 <div className="py-8 text-center text-brand-300">Carregando...</div>
@@ -290,106 +331,56 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
                 <Table>
                   <Thead>
                     <tr>
-                      <Th>
-                        <button onClick={toggleSelectAll}>
-                          {selectedIds.size === filtered.length && filtered.length > 0
-                            ? <CheckSquare className="h-4 w-4 text-brand-800" />
-                            : <Square className="h-4 w-4 text-brand-300" />
-                          }
-                        </button>
-                      </Th>
-                      <Th>Data</Th>
-                      <Th>Descrição</Th>
-                      <Th>Igreja</Th>
-                      <Th>Conta</Th>
-                      <Th>Tipo</Th>
-                      <Th>Valor</Th>
-                      <Th>Status</Th>
-                      <Th>Comprovante</Th>
-                      <Th>Ações</Th>
+                      <Th><button onClick={toggleSelectAll}>{selectedIds.size === filtered.length && filtered.length > 0 ? <CheckSquare className="h-4 w-4 text-brand-800" /> : <Square className="h-4 w-4 text-brand-300" />}</button></Th>
+                      <Th>Data</Th><Th>Descrição</Th><Th>Igreja</Th><Th>Conta</Th><Th>Tipo</Th><Th>Valor</Th><Th>Status</Th><Th>Comprovante</Th><Th>Ações</Th>
                     </tr>
                   </Thead>
                   <tbody>
                     {filtered.map(t => {
                       const church = churches.find(c => String(c.id) === String((t as any).churchId))
                       const isSelected = selectedIds.has(t.id)
-                      // item 7: status "A confirmar" para não confirmados
                       const isConfirmado = confirmados.has(t.id) || t.status === 'CONFIRMED'
                       const comprov = comprovantes.get(t.id)
+                      // item 10: resolver URL do comprovante do backend
+                      const comprovUrl = comprov?.url || resolveUrl((t as any).attachmentUrl)
+                      const comprovName = comprov?.name || (t as any).attachmentUrl?.split('/').pop()
                       return (
                         <Tr key={t.id} className={isSelected ? 'bg-brand-50' : ''}>
+                          <Td><button onClick={() => toggleSelect(t.id)}>{isSelected ? <CheckSquare className="h-4 w-4 text-brand-800" /> : <Square className="h-4 w-4 text-brand-200" />}</button></Td>
+                          <Td className="text-brand-500 whitespace-nowrap">{new Date(t.transactionDate).toLocaleDateString('pt-BR')}</Td>
                           <Td>
-                            <button onClick={() => toggleSelect(t.id)}>
-                              {isSelected
-                                ? <CheckSquare className="h-4 w-4 text-brand-800" />
-                                : <Square className="h-4 w-4 text-brand-200" />
-                              }
-                            </button>
-                          </Td>
-                          <Td className="text-brand-500 whitespace-nowrap">
-                            {new Date(t.transactionDate).toLocaleDateString('pt-BR')}
-                          </Td>
-                          {/* item 5: clicar abre modal de conferência */}
-                          <Td>
-                            <button
-                              onClick={() => setViewTx(t)}
-                              className="font-semibold text-brand-700 hover:underline text-left"
-                            >
+                            <button onClick={() => openView(t)} className="font-semibold text-brand-700 hover:underline text-left">
                               {t.description}
                             </button>
                           </Td>
                           <Td className="text-brand-500">{church?.name || '—'}</Td>
                           <Td className="text-brand-500">{(t as any).accountName || 'Caixa Geral'}</Td>
+                          <Td><Badge tone={t.type === 'REVENUE' ? 'green' : 'red'}>{t.type === 'REVENUE' ? 'Receita' : 'Despesa'}</Badge></Td>
+                          <Td className={`font-semibold ${t.type === 'REVENUE' ? 'text-green-600' : 'text-red-500'}`}>{formatCurrency(Number(t.amount))}</Td>
+                          <Td><Badge tone={isConfirmado ? 'green' : 'yellow'}>{isConfirmado ? 'Confirmado' : 'A confirmar'}</Badge></Td>
                           <Td>
-                            <Badge tone={t.type === 'REVENUE' ? 'green' : 'red'}>
-                              {t.type === 'REVENUE' ? 'Receita' : 'Despesa'}
-                            </Badge>
-                          </Td>
-                          <Td className={`font-semibold ${t.type === 'REVENUE' ? 'text-green-600' : 'text-red-500'}`}>
-                            {formatCurrency(Number(t.amount))}
-                          </Td>
-                          {/* item 7: status A confirmar / Confirmado */}
-                          <Td>
-                            <Badge tone={isConfirmado ? 'green' : 'yellow'}>
-                              {isConfirmado ? 'Confirmado' : 'A confirmar'}
-                            </Badge>
-                          </Td>
-                          {/* item 6: mostrar comprovante da despesa na tesouraria */}
-                          <Td>
-                            {comprov ? (
-                              <a
-                                href={comprov.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-brand-700 hover:underline flex items-center gap-1"
-                              >
-                                <Eye className="h-3 w-3" /> {comprov.name.slice(0, 12)}...
+                            {/* item 6/10: exibir comprovante do tesoureiro */}
+                            {comprovUrl ? (
+                              <a href={comprovUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-700 hover:underline flex items-center gap-1">
+                                <Eye className="h-3 w-3" /> {comprovName ? comprovName.slice(0, 10) + '...' : 'Ver'}
                               </a>
                             ) : (
-                              <button
-                                onClick={() => { setUploadModalId(t.id); setUploadFile(null) }}
-                                className="text-xs text-brand-300 hover:text-brand-600 flex items-center gap-1"
-                              >
-                                <Upload className="h-3 w-3" /> Anexar
-                              </button>
+                              <span className="text-xs text-brand-200">Sem anexo</span>
                             )}
                           </Td>
                           <Td>
                             <div className="flex gap-1">
                               {!isConfirmado && (
-                                <button
-                                  onClick={() => confirmarLancamento(t.id)}
-                                  className="p-1.5 rounded hover:bg-green-50 text-green-500"
-                                  title="Confirmar"
-                                >
+                                <button onClick={() => confirmarLancamento(t.id)} className="p-1.5 rounded hover:bg-green-50 text-green-500" title="Confirmar">
                                   <Check className="h-3.5 w-3.5" />
                                 </button>
                               )}
-                              <button
-                                onClick={() => setViewTx(t)}
-                                className="p-1.5 rounded hover:bg-brand-50 text-brand-400"
-                                title="Ver detalhes"
-                              >
+                              {isConfirmado && (
+                                <button onClick={() => desconfirmarLancamento(t.id)} className="p-1.5 rounded hover:bg-yellow-50 text-yellow-500" title="Desconfirmar">
+                                  <XCircle className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                              <button onClick={() => openView(t)} className="p-1.5 rounded hover:bg-brand-50 text-brand-400" title="Ver detalhes">
                                 <Eye className="h-3.5 w-3.5" />
                               </button>
                             </div>
@@ -405,7 +396,7 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
         </>
       )}
 
-      {/* ── Fechamento — item 8, 16 ── */}
+      {/* ── Fechamento ── */}
       {tab === 'Fechamento' && (
         <div className="grid md:grid-cols-2 gap-6">
           <Card>
@@ -414,36 +405,25 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
                 <Lock className="h-6 w-6 text-brand-700" />
                 <div>
                   <p className="font-bold text-brand-900">Fechar Período Contábil</p>
-                  <p className="text-sm text-brand-300">Bloqueia novos lançamentos para o mês selecionado.</p>
+                  <p className="text-sm text-brand-300">Bloqueia lançamentos para o mês selecionado.</p>
                 </div>
               </div>
               <Select label="Igreja" value={fechamentoIgreja} onChange={e => setFechamentoIgreja(e.target.value)}>
                 <option value="Todas">Todas as Igrejas</option>
                 {churches.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
               </Select>
-              {/* item 8: campo type="month" envia YYYY-MM exatamente */}
-              <Input
-                label="Mês de Referência"
-                type="month"
-                value={mes}
-                onChange={e => setMes(e.target.value)}
-              />
+              <Input label="Mês de Referência" type="month" value={mes} onChange={e => setMes(e.target.value)} />
               <p className="text-xs text-brand-300">
-                Período selecionado: <strong>{mes ? (() => {
-                  const [a, m] = mes.split('-')
-                  return new Date(Number(a), Number(m) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-                })() : '—'}</strong>
+                Fechando: <strong>{mes ? (() => { const [a,m] = mes.split('-'); return new Date(Number(a), Number(m)-1, 1).toLocaleDateString('pt-BR', {month:'long',year:'numeric'}) })() : '—'}</strong>
               </p>
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
-                Após o fechamento, novos lançamentos para este período serão bloqueados.
+                Após o fechamento, novos lançamentos serão bloqueados para este período.
               </div>
               <Button onClick={fecharPeriodo} disabled={fechando} className="w-full">
-                <Lock className="h-4 w-4" />
-                {fechando ? 'Fechando...' : 'Fechar Período'}
+                <Lock className="h-4 w-4" /> {fechando ? 'Fechando...' : 'Fechar Período'}
               </Button>
             </CardBody>
           </Card>
-
           <Card>
             <CardHeader className="flex items-center justify-between">
               <CardTitle>Períodos Fechados</CardTitle>
@@ -456,23 +436,15 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
                 <p className="text-sm text-brand-300 py-4 text-center">Nenhum período fechado em {anoFiltro}.</p>
               ) : (
                 <div className="space-y-2">
-                  {periodosFiltradosPorAno
-                    .sort((a, b) => b.mes.localeCompare(a.mes))
-                    .map(p => (
-                      <div key={p.mes + p.igreja} className="flex items-center justify-between px-4 py-3 rounded-lg border border-brand-100 bg-brand-50/30">
-                        <div>
-                          <p className="font-semibold text-sm text-brand-900">{p.label}</p>
-                          <p className="text-xs text-brand-300">{p.igreja} · Fechado em {new Date(p.fechadoEm).toLocaleDateString('pt-BR')}</p>
-                        </div>
-                        <button
-                          onClick={() => reabrirPeriodo(p)}
-                          className="text-xs font-semibold text-brand-700 hover:underline px-2 py-1 rounded hover:bg-brand-100"
-                        >
-                          Reabrir
-                        </button>
+                  {periodosFiltradosPorAno.sort((a,b) => b.mes.localeCompare(a.mes)).map(p => (
+                    <div key={p.mes+p.igreja} className="flex items-center justify-between px-4 py-3 rounded-lg border border-brand-100 bg-brand-50/30">
+                      <div>
+                        <p className="font-semibold text-sm text-brand-900">{p.label}</p>
+                        <p className="text-xs text-brand-300">{p.igreja} · {new Date(p.fechadoEm).toLocaleDateString('pt-BR')}</p>
                       </div>
-                    ))
-                  }
+                      <button onClick={() => reabrirPeriodo(p)} className="text-xs font-semibold text-brand-700 hover:underline px-2 py-1 rounded hover:bg-brand-100">Reabrir</button>
+                    </div>
+                  ))}
                 </div>
               )}
             </CardBody>
@@ -480,94 +452,122 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
         </div>
       )}
 
-      {/* Modal: visualizar lançamento — item 5 */}
+      {/* Modal: conferência do lançamento — item 5 */}
       <Modal
         open={!!viewTx}
-        onClose={() => setViewTx(null)}
-        title="Detalhes do Lançamento"
+        onClose={() => { setViewTx(null); setEditMode(false) }}
+        title="Conferência de Lançamento"
         footer={
-          <>
-            <Button variant="outline" onClick={() => setViewTx(null)}>Fechar</Button>
-            {viewTx && !confirmados.has(viewTx.id) && viewTx.status !== 'CONFIRMED' && (
-              <Button onClick={() => { if (viewTx) { confirmarLancamento(viewTx.id); setViewTx(null) } }}>
-                <Check className="h-4 w-4" /> Confirmar Lançamento
-              </Button>
-            )}
-          </>
+          <div className="flex items-center justify-between w-full">
+            <div className="flex gap-2">
+              {viewTx && !editMode && (
+                <>
+                  <Button size="sm" variant="outline" onClick={() => setEditMode(true)}>
+                    <Edit2 className="h-3.5 w-3.5" /> Editar
+                  </Button>
+                  <button onClick={deleteTx} className="px-3 py-1.5 text-sm font-medium text-red-500 hover:bg-red-50 rounded-lg border border-red-200">
+                    Excluir
+                  </button>
+                </>
+              )}
+              {editMode && (
+                <>
+                  <Button size="sm" onClick={saveEdit} disabled={savingEdit}>
+                    {savingEdit ? 'Salvando...' : 'Salvar'}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditMode(false)}>Cancelar</Button>
+                </>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => { setViewTx(null); setEditMode(false) }}>Fechar</Button>
+              {viewTx && !(confirmados.has(viewTx.id) || viewTx.status === 'CONFIRMED') && (
+                <Button onClick={() => { if (viewTx) { confirmarLancamento(viewTx.id); setViewTx(null) } }}>
+                  <Check className="h-4 w-4" /> Confirmar
+                </Button>
+              )}
+              {viewTx && (confirmados.has(viewTx.id) || viewTx.status === 'CONFIRMED') && (
+                <Button onClick={() => { if (viewTx) { desconfirmarLancamento(viewTx.id); setViewTx(null) } }} className="!bg-yellow-500 hover:!bg-yellow-600">
+                  <XCircle className="h-4 w-4" /> Desconfirmar
+                </Button>
+              )}
+            </div>
+          </div>
         }
       >
         {viewTx && (
-          <div className="space-y-3 text-sm">
-            {[
-              ['Data', new Date(viewTx.transactionDate).toLocaleDateString('pt-BR')],
-              ['Descrição', viewTx.description],
-              ['Tipo', viewTx.type === 'REVENUE' ? 'Receita' : 'Despesa'],
-              ['Valor', formatCurrency(Number(viewTx.amount))],
-              ['Categoria', viewTx.categoryName || '—'],
-              ['Conta', (viewTx as any).accountName || 'Caixa Geral'],
-              ['Status', confirmados.has(viewTx.id) || viewTx.status === 'CONFIRMED' ? 'Confirmado' : 'A confirmar'],
-            ].map(([l, v]) => (
-              <div key={l} className="flex gap-2 border-b border-brand-100 pb-2">
-                <span className="font-semibold text-brand-900 w-28 shrink-0">{l}:</span>
-                <span className="text-brand-500">{v}</span>
+          <div className="space-y-4">
+            {editMode ? (
+              <>
+                <Input label="Descrição" value={editForm.description} onChange={e => setEditForm({...editForm, description: e.target.value})} />
+                <Input label="Valor (R$)" type="number" step="0.01" value={editForm.amount} onChange={e => setEditForm({...editForm, amount: e.target.value})} />
+              </>
+            ) : (
+              <div className="space-y-2 text-sm">
+                {[
+                  ['Data', new Date(viewTx.transactionDate).toLocaleDateString('pt-BR')],
+                  ['Descrição', viewTx.description],
+                  ['Tipo', viewTx.type === 'REVENUE' ? 'Receita' : 'Despesa'],
+                  ['Valor', formatCurrency(Number(viewTx.amount))],
+                  ['Conta', (viewTx as any).accountName || 'Caixa Geral'],
+                  ['Status', confirmados.has(viewTx.id) || viewTx.status === 'CONFIRMED' ? 'Confirmado' : 'A confirmar'],
+                ].map(([l, v]) => (
+                  <div key={l} className="flex gap-2 border-b border-brand-100 pb-2">
+                    <span className="font-semibold text-brand-900 w-28 shrink-0">{l}:</span>
+                    <span className="text-brand-500">{v}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-            {/* item 6: comprovante da despesa */}
-            <div className="flex gap-2 items-start">
-              <span className="font-semibold text-brand-900 w-28 shrink-0">Comprovante:</span>
-              {comprovantes.get(viewTx.id) ? (
-                <a
-                  href={comprovantes.get(viewTx.id)!.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-brand-700 hover:underline flex items-center gap-1"
-                >
-                  <Eye className="h-3.5 w-3.5" /> {comprovantes.get(viewTx.id)!.name}
-                </a>
-              ) : (
-                <button
-                  onClick={() => { setViewTx(null); setUploadModalId(viewTx.id) }}
-                  className="text-brand-400 hover:text-brand-700 flex items-center gap-1"
-                >
-                  <Upload className="h-3.5 w-3.5" /> Anexar comprovante
-                </button>
-              )}
+            )}
+
+            {/* Comprovante do tesoureiro — item 6 */}
+            <div className="border border-brand-100 rounded-lg p-3">
+              <p className="text-sm font-semibold text-brand-900 mb-2">Comprovante (enviado pelo tesoureiro)</p>
+              {(() => {
+                const comprov = comprovantes.get(viewTx.id)
+                const url = comprov?.url || resolveUrl((viewTx as any).attachmentUrl)
+                const name = comprov?.name || (viewTx as any).attachmentUrl?.split('/').pop()
+                return url ? (
+                  <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-700 hover:underline flex items-center gap-2">
+                    <Eye className="h-4 w-4" /> {name || 'Ver comprovante'}
+                  </a>
+                ) : (
+                  <p className="text-sm text-brand-300">Nenhum comprovante anexado pelo tesoureiro.</p>
+                )
+              })()}
+            </div>
+
+            {/* Observação do contador — só contador escreve, tesoureiro só lê */}
+            <div className="border border-blue-100 rounded-lg p-3 bg-blue-50/30">
+              <p className="text-sm font-semibold text-brand-900 mb-2">📝 Observações do Contador</p>
+              <textarea
+                rows={3}
+                value={contadorNota[viewTx.id] || ''}
+                onChange={e => setContadorNota(prev => ({ ...prev, [viewTx.id]: e.target.value }))}
+                placeholder="Anotações do contador (visível para o tesoureiro como leitura)..."
+                className="w-full px-3 py-2 rounded-lg border border-blue-200 text-sm outline-none focus:border-blue-400 resize-none bg-white"
+              />
+              <p className="text-xs text-blue-400 mt-1">Esta anotação é visível ao tesoureiro somente para leitura.</p>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* Modal: upload comprovante */}
+      {/* Modal upload */}
       <Modal
         open={!!uploadModalId}
         onClose={() => { setUploadModalId(null); setUploadFile(null) }}
-        title={`Anexar Comprovante — Lançamento #${uploadModalId}`}
+        title="Anexar Comprovante"
         footer={
           <>
             <Button variant="outline" onClick={() => setUploadModalId(null)}>Cancelar</Button>
-            <Button onClick={handleUpload} disabled={!uploadFile}>
-              <Upload className="h-4 w-4" /> Vincular
-            </Button>
+            <Button onClick={handleUpload} disabled={!uploadFile}><Upload className="h-4 w-4" /> Vincular</Button>
           </>
         }
       >
         <div className="space-y-4">
-          <p className="text-sm text-brand-500">
-            Selecione a nota fiscal, recibo ou comprovante referente a este lançamento.
-            O arquivo será exibido na coluna "Comprovante" da tabela e também ao abrir o lançamento.
-          </p>
-          <input
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={e => setUploadFile(e.target.files?.[0] || null)}
-            className="text-sm text-brand-500 w-full"
-          />
-          {uploadFile && (
-            <div className="bg-brand-50 border border-brand-100 rounded-lg px-4 py-3 text-sm">
-              <p className="font-semibold text-brand-900">{uploadFile.name}</p>
-              <p className="text-xs text-brand-300">{(uploadFile.size / 1024).toFixed(1)} KB</p>
-            </div>
-          )}
+          <input type="file" accept="image/*,application/pdf" onChange={e => setUploadFile(e.target.files?.[0] || null)} className="text-sm text-brand-500 w-full" />
+          {uploadFile && <div className="bg-brand-50 border border-brand-100 rounded-lg px-4 py-3 text-sm"><p className="font-semibold">{uploadFile.name}</p></div>}
         </div>
       </Modal>
     </Layout>

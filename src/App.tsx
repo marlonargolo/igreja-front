@@ -1,5 +1,7 @@
+// src/App.tsx
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppProvider } from '@/lib/AppContext'
+import { ConfigProvider } from '@/lib/ConfigContext'  // <-- ADICIONE ESTA LINHA
 import { ToastProvider } from '@/components/ui/Extras'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 
@@ -47,7 +49,6 @@ import Demonstracoes from '@/pages/contabilidade/Demonstracoes'
 import PlanoDeContas from '@/pages/contabilidade/PlanoDeContas'
 import Chamados from '@/pages/admin/Chamados'
 
-
 function withChurch(el: React.ReactNode) {
   return <ProtectedRoute requireChurch>{el}</ProtectedRoute>
 }
@@ -55,64 +56,66 @@ function withChurch(el: React.ReactNode) {
 export default function App() {
   return (
     <AppProvider>
-      <ToastProvider>
-        <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/selecionar-igreja" element={<ProtectedRoute><ChurchSelection /></ProtectedRoute>} />
+      <ConfigProvider>  {/* <-- ADICIONE ESTA LINHA */}
+        <ToastProvider>
+          <Routes>
+            <Route path="/" element={<Navigate to="/login" replace />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/selecionar-igreja" element={<ProtectedRoute><ChurchSelection /></ProtectedRoute>} />
 
-          {/* Dashboard */}
-          <Route path="/dashboard" element={withChurch(<Dashboard />)} />
+            {/* Dashboard */}
+            <Route path="/dashboard" element={withChurch(<Dashboard />)} />
 
-          {/* Configurações gerais */}
-          <Route path="/configuracoes/unidades" element={withChurch(<UnidadesPage />)} />
-          <Route path="/configuracoes/perfis" element={withChurch(<PerfisPage />)} />
-          <Route path="/configuracoes/assinatura" element={withChurch(<Subscription />)} />
-          <Route path="/usuarios" element={withChurch(<UsersPage />)} />
+            {/* Configurações gerais */}
+            <Route path="/configuracoes/unidades" element={withChurch(<UnidadesPage />)} />
+            <Route path="/configuracoes/perfis" element={withChurch(<PerfisPage />)} />
+            <Route path="/configuracoes/assinatura" element={withChurch(<Subscription />)} />
+            <Route path="/usuarios" element={withChurch(<UsersPage />)} />
 
-          {/* Secretaria */}
-          <Route path="/membros" element={withChurch(<Members />)} />
-          <Route path="/membros/novo" element={withChurch(<MemberForm />)} />
-          <Route path="/membros/:id/editar" element={withChurch(<MemberForm />)} />
-          <Route path="/membros/:id" element={withChurch(<MemberProfile />)} />
-          <Route path="/secretaria/transferencias" element={withChurch(<SecretariaTransferencias />)} />
-          <Route path="/secretaria/credenciais" element={withChurch(<Credenciais />)} />
-          <Route path="/secretaria/relatorios" element={withChurch(<RelatoriosSecretaria />)} />
-          <Route path="/secretaria/configuracoes" element={withChurch(<SecretariaConfiguracoes />)} />
+            {/* Secretaria */}
+            <Route path="/membros" element={withChurch(<Members />)} />
+            <Route path="/membros/novo" element={withChurch(<MemberForm />)} />
+            <Route path="/membros/:id/editar" element={withChurch(<MemberForm />)} />
+            <Route path="/membros/:id" element={withChurch(<MemberProfile />)} />
+            <Route path="/secretaria/transferencias" element={withChurch(<SecretariaTransferencias />)} />
+            <Route path="/secretaria/credenciais" element={withChurch(<Credenciais />)} />
+            <Route path="/secretaria/relatorios" element={withChurch(<RelatoriosSecretaria />)} />
+            <Route path="/secretaria/configuracoes" element={withChurch(<SecretariaConfiguracoes />)} />
 
-          {/* Tesouraria */}
-          <Route path="/tesouraria/receitas" element={withChurch(<Receitas />)} />
-          <Route path="/tesouraria/despesas" element={withChurch(<Despesas />)} />
-          <Route path="/tesouraria/transferencias" element={withChurch(<Finance />)} />
-          <Route path="/tesouraria/relatorios" element={withChurch(<RelatoriosTesouraria />)} />
-          <Route path="/tesouraria/configuracoes" element={withChurch(<TesourariaConfiguracoes />)} />
+            {/* Tesouraria */}
+            <Route path="/tesouraria/receitas" element={withChurch(<Receitas />)} />
+            <Route path="/tesouraria/despesas" element={withChurch(<Despesas />)} />
+            <Route path="/tesouraria/transferencias" element={withChurch(<Finance />)} />
+            <Route path="/tesouraria/relatorios" element={withChurch(<RelatoriosTesouraria />)} />
+            <Route path="/tesouraria/configuracoes" element={withChurch(<TesourariaConfiguracoes />)} />
 
-          {/* Patrimônio */}
-          <Route path="/patrimonio" element={withChurch(<Assets />)} />
-          <Route path="/patrimonio/novo" element={withChurch(<AssetForm />)} />
-          <Route path="/patrimonio/movimentacao" element={withChurch(<PatrimonioPlaceholder title="Movimentação de Patrimônio" />)} />
-          <Route path="/patrimonio/baixa" element={withChurch(<PatrimonioPlaceholder title="Baixa de Patrimônio" />)} />
-          <Route path="/patrimonio/relatorios" element={withChurch(<PatrimonioPlaceholder title="Relatórios — Patrimônio" />)} />
-          <Route path="/patrimonio/configuracoes" element={withChurch(<PatrimonioPlaceholder title="Configurações — Patrimônio" />)} />
+            {/* Patrimônio */}
+            <Route path="/patrimonio" element={withChurch(<Assets />)} />
+            <Route path="/patrimonio/novo" element={withChurch(<AssetForm />)} />
+            <Route path="/patrimonio/movimentacao" element={withChurch(<PatrimonioPlaceholder title="Movimentação de Patrimônio" />)} />
+            <Route path="/patrimonio/baixa" element={withChurch(<PatrimonioPlaceholder title="Baixa de Patrimônio" />)} />
+            <Route path="/patrimonio/relatorios" element={withChurch(<PatrimonioPlaceholder title="Relatórios — Patrimônio" />)} />
+            <Route path="/patrimonio/configuracoes" element={withChurch(<PatrimonioPlaceholder title="Configurações — Patrimônio" />)} />
 
-          {/* Contabilidade */}
-          <Route path="/contabilidade/fechamento" element={withChurch(<Accounting />)} />
-          <Route path="/contabilidade/exportacao" element={withChurch(<Accounting />)} />
-          <Route path="/contabilidade/backup" element={withChurch(<Accounting />)} />
+            {/* Contabilidade */}
+            <Route path="/contabilidade/fechamento" element={withChurch(<Accounting />)} />
+            <Route path="/contabilidade/exportacao" element={withChurch(<Accounting />)} />
+            <Route path="/contabilidade/backup" element={withChurch(<Accounting />)} />
 
-          <Route path="/configuracoes/congregacoes" element={withChurch(<CongregarcoesPage />)} />
-          <Route path="/admin/igrejas" element={withChurch(<AdminIgrejas />)} />
-          <Route path="/admin/assinatura" element={withChurch(<AdminAssinatura />)} />
-          <Route path="/admin/aparencia" element={withChurch(<AdminAparencia />)} />
-          <Route path="/admin/integracoes" element={withChurch(<AdminIntegracoes />)} />
-          <Route path="/admin/backup" element={withChurch(<AdminBackup />)} />
-          <Route path="/contabilidade/demonstracoes" element={withChurch(<Demonstracoes />)} />
-          <Route path="/contabilidade/plano-de-contas" element={withChurch(<PlanoDeContas />)} />
-          <Route path="/suporte/chamados" element={withChurch(<Chamados />)} />
+            <Route path="/configuracoes/congregacoes" element={withChurch(<CongregarcoesPage />)} />
+            <Route path="/admin/igrejas" element={withChurch(<AdminIgrejas />)} />
+            <Route path="/admin/assinatura" element={withChurch(<AdminAssinatura />)} />
+            <Route path="/admin/aparencia" element={withChurch(<AdminAparencia />)} />
+            <Route path="/admin/integracoes" element={withChurch(<AdminIntegracoes />)} />
+            <Route path="/admin/backup" element={withChurch(<AdminBackup />)} />
+            <Route path="/contabilidade/demonstracoes" element={withChurch(<Demonstracoes />)} />
+            <Route path="/contabilidade/plano-de-contas" element={withChurch(<PlanoDeContas />)} />
+            <Route path="/suporte/chamados" element={withChurch(<Chamados />)} />
 
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </ToastProvider>
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </ToastProvider>
+      </ConfigProvider>  {/* <-- ADICIONE ESTA LINHA */}
     </AppProvider>
   )
 }

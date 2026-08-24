@@ -96,12 +96,13 @@ export const membersService = {
     await http.delete(`/members/${id}`)
   },
 
-  async uploadAvatar(id: number, file: File) {
+  async uploadAvatar(memberId: number, file: File): Promise<string> {
     const res = await http.upload<ApiSuccess<{ avatarUrl: string }>>(
-      `/members/${id}/avatar`,
+      `/members/${memberId}/avatar`,
       file,
-      'avatar'
+      'file'
     )
-    return res.data
+    return res?.data?.avatarUrl || ''
   },
+  
 }

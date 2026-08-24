@@ -11,11 +11,14 @@ import { MetricCard } from '@/components/ui/Misc'
 import { formatCurrency } from '@/lib/format'
 import { useToast } from '@/components/ui/Extras'
 import { financeService, type Transaction } from '@/services'
+import { useConfig } from '@/lib/ConfigContext'
 
-const CATEGORIAS_DESPESA = ['Conta de Água', 'Conta de Luz', 'Material de Limpeza', 'Aluguel', 'Manutenção', 'Equipamentos', 'Transferência', 'Repasse (Redízimo)', 'Outros']
+// REMOVA esta linha - está causando o erro
+// const CATEGORIAS_DESPESA = categoriasFinanceiras.filter(c => ...)
 
 export default function Despesas() {
   const showToast = useToast()
+  const { categoriasFinanceiras, local } = useConfig()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
@@ -33,6 +36,19 @@ export default function Despesas() {
     parcelas: '1',
     fornecedor: '',
   })
+
+  // MOVA a constante para DENTRO do componente, DEPOIS de obter categoriasFinanceiras
+  const CATEGORIAS_DESPESA = categoriasFinanceiras.filter(c =>
+    c.toLowerCase().includes('agua') ||
+    c.toLowerCase().includes('luz') ||
+    c.toLowerCase().includes('aluguel') ||
+    c.toLowerCase().includes('material') ||
+    c.toLowerCase().includes('manutencao') ||
+    c.toLowerCase().includes('equipamento') ||
+    c.toLowerCase().includes('transferência') ||
+    c.toLowerCase().includes('repasse') ||
+    c.toLowerCase().includes('redízimo')
+  )
 
   useEffect(() => { load() }, [])
 

@@ -16,14 +16,16 @@ export interface Church {
   pastorId?: number
 }
 
-export interface ChurchListParams {
-  page?: number
-  size?: number
-  search?: string
+export const FILES_BASE = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://2.24.80.229:3000'
+
+export function resolveLogoUrl(logoUrl?: string): string | undefined {
+  if (!logoUrl) return undefined
+  if (logoUrl.startsWith('http')) return logoUrl
+  return `${FILES_BASE}${logoUrl}`
 }
 
 export const churchesService = {
-  async list(params: ChurchListParams = {}) {
+  async list(params: { page?: number; size?: number; search?: string } = {}) {
     const res = await http.get<ApiSuccess<any>>('/churches', {
       page: params.page ?? 0,
       size: params.size ?? 50,
@@ -53,27 +55,13 @@ export const churchesService = {
     await http.delete(`/churches/${id}`)
   },
 
-  /**
-   * Faz upload da logo para o backend via multipart/form-data.
-   * O backend salva o arquivo em /app/uploads/logos/ e retorna a URL.
-   */
+  // Usa http.upload que já lê o token correto de igrejahub_access_token
   async uploadLogo(churchId: number, file: File): Promise<string> {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const token = localStorage.getItem('access_token') ||
-      sessionStorage.getItem('access_token') || ''
-
-    // http.ts não suporta FormData nativamente — chamada direta via fetch
-    const BASE = import.meta.env.VITE_API_BASE_URL || 'http://2.24.80.229:3000/api'
-    const res = await fetch(`${BASE}/churches/${churchId}/logo`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    })
-
-    if (!res.ok) throw new Error('Falha ao fazer upload da logo.')
-    const json = await res.json()
-    return json?.data?.logoUrl || ''
+    const res = await http.upload<ApiSuccess<{ logoUrl: string }>>(
+      `/churches/${churchId}/logo`,
+      file,
+      'file'
+    )
+    return res?.data?.logoUrl || ''
   },
 }

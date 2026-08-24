@@ -1,80 +1,77 @@
-import { createContext, ReactNode, useContext, useEffect, useState } from 'react'
-import { authService, type AuthChurch, type AuthUser } from '@/services/auth.service'
-import { tokenStore } from '@/lib/http'
+// src/lib/AppContext.tsx
+import { createContext, useContext, useState, ReactNode, useEffect } from 'react'
 
-const SELECTED_CHURCH_KEY = 'igrejahub_selected_church_id'
-
-interface AppState {
-  user: AuthUser | null
-  loading: boolean
-  church: AuthChurch | null
-  setUser: (u: AuthUser | null) => void
-  setChurch: (c: AuthChurch | null) => void
-  login: (email: string, password: string, remember?: boolean) => Promise<void>
-  logout: () => Promise<void>
+interface Church {
+  id: string
+  name: string
 }
 
-const AppCtx = createContext<AppState | null>(null)
+interface User {
+  id: string
+  name: string
+  email: string
+  churches?: Church[]
+}
+
+interface AppContextType {
+  user: User | null
+  church: Church | null
+  setUser: (user: User | null) => void
+  setChurch: (church: Church | null) => void
+  loading: boolean
+}
+
+const AppContext = createContext<AppContextType | null>(null)
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null)
-  const [church, setChurchState] = useState<AuthChurch | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+  const [church, setChurch] = useState<Church | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function bootstrap() {
-      if (!authService.isAuthenticated()) {
-        setLoading(false)
-        return
-      }
+    // Carregar usuário do localStorage
+    const savedUser = localStorage.getItem('user')
+    if (savedUser) {
       try {
-        const me = await authService.me()
-        setUser(me)
-        const savedChurchId = localStorage.getItem(SELECTED_CHURCH_KEY)
-        const restored = me.churches?.find((c) => c.id === savedChurchId)
-        if (restored) setChurchState(restored)
+        setUser(JSON.parse(savedUser))
       } catch {
-        tokenStore.clear()
-      } finally {
-        setLoading(false)
+        // Usuário não encontrado
       }
     }
-    bootstrap()
+
+    // Carregar igreja do localStorage
+    const savedChurch = localStorage.getItem('igrejahub_current_church')
+    if (savedChurch) {
+      try {
+        setChurch(JSON.parse(savedChurch))
+      } catch {
+        setChurch({ id: '2', name: 'Igreja Principal' })
+      }
+    } else {
+      setChurch({ id: '2', name: 'Igreja Principal' })
+    }
+    setLoading(false)
   }, [])
 
-  async function login(email: string, password: string, remember = true) {
-    const authUser = await authService.login({ email, password, remember })
-    setUser(authUser)
-  }
-
-  async function logout() {
-    try { await authService.logout() } catch {}
-    tokenStore.clear()
-    setUser(null)
-    setChurchState(null)
-    localStorage.removeItem(SELECTED_CHURCH_KEY)
-    localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
-    sessionStorage.clear()
-    // Forçar navegação para login
-    window.location.href = '/login'
-  }
-
-  function setChurch(c: AuthChurch | null) {
-    setChurchState(c)
-    if (c) localStorage.setItem(SELECTED_CHURCH_KEY, c.id)
-    else localStorage.removeItem(SELECTED_CHURCH_KEY)
+  const value = {
+    user,
+    setUser,
+    church,
+    setChurch,
+    loading
   }
 
   return (
-    <AppCtx.Provider value={{ user, loading, church, setUser, setChurch, login, logout }}>
+    <AppContext.Provider value={value}>
       {children}
-    </AppCtx.Provider>
+    </AppContext.Provider>
   )
 }
 
 export function useApp() {
-  const ctx = useContext(AppCtx)
-  if (!ctx) throw new Error('useApp must be used inside AppProvider')
+  const ctx = useContext(AppContext)
+  if (!ctx) {
+    throw new Error('useApp must be used inside AppProvider')
+  }
   return ctx
 }

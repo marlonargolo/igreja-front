@@ -13,6 +13,7 @@ import { useToast } from '@/components/ui/Extras'
 import { financeService, type Transaction } from '@/services'
 import { http } from '@/lib/http'
 import type { ApiSuccess } from '@/types/api'
+import { useConfig } from '@/lib/ConfigContext'
 
 const CATEGORIAS_TRANSFERENCIA = [
   'Transferência entre Contas',
@@ -30,8 +31,8 @@ interface FinancialAccount {
 
 export default function Finance() {
   const showToast = useToast()
+  const { config } = useConfig()
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [accounts, setAccounts] = useState<FinancialAccount[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -45,22 +46,17 @@ export default function Finance() {
     contaOrigemId: '',
     contaDestinoId: '',
   })
+  
 
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
     setLoading(true)
     try {
-      const [txRes, accRes] = await Promise.all([
-        financeService.list({ size: 100, type: 'EXPENSE' }) as any,
-        http.get<ApiSuccess<any>>('/finance/accounts').catch(() => ({ data: [] })),
-      ])
+      const txRes = await financeService.list({ size: 100, type: 'EXPENSE' }) as any
       const raw = txRes as any
       const all = raw?.content || raw?.data || raw || []
       setTransactions(all.filter((t: Transaction) => isTransfer(t)))
-      const accRaw = (accRes as any).data
-      const accList = accRaw?.data || accRaw?.content || accRaw || []
-      setAccounts(Array.isArray(accList) ? accList : [])
     } catch {
       showToast('Falha ao carregar transferências.')
     } finally {
@@ -244,10 +240,8 @@ export default function Finance() {
               onChange={e => setForm({ ...form, contaOrigemId: e.target.value })}
             >
               <option value="">— Selecione —</option>
-              {accounts.map(a => (
-                <option key={a.id} value={String(a.id)}>
-                  {a.name}{a.bankName ? ` (${a.bankName})` : ''}
-                </option>
+              {config.contasECaixas.map(c => (
+                <option key={c} value={c}>{c}</option>
               ))}
             </Select>
             <Select
@@ -256,12 +250,10 @@ export default function Finance() {
               onChange={e => setForm({ ...form, contaDestinoId: e.target.value })}
             >
               <option value="">— Selecione —</option>
-              {accounts
-                .filter(a => String(a.id) !== form.contaOrigemId)
-                .map(a => (
-                  <option key={a.id} value={String(a.id)}>
-                    {a.name}{a.bankName ? ` (${a.bankName})` : ''}
-                  </option>
+              {config.contasECaixas
+                .filter(c => c !== form.contaOrigemId)
+                .map(c => (
+                  <option key={c} value={c}>{c}</option>
                 ))
               }
             </Select>

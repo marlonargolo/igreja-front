@@ -1,7 +1,9 @@
-import { ReactNode, useState } from 'react'
+import { ReactNode, useState, useEffect, useRef } from 'react'
 import { Search, Bell, Menu } from 'lucide-react'
 import { Breadcrumb } from '@/components/ui/Extras'
 import { Button } from '@/components/ui/Button'
+import { useNavigate } from 'react-router-dom'
+import { notificationsService, type Notification } from '@/services/notifications.service'
 
 interface HeaderProps {
   crumbs: { label: string; to?: string }[]
@@ -11,14 +13,71 @@ interface HeaderProps {
   onOpenMobile: () => void
 }
 
-const notifications = [
-  { title: 'Novo membro cadastrado', desc: 'Mariana Costa Lima se cadastrou como visitante.', time: '5 min' },
-  { title: 'Despesa pendente', desc: 'Fatura de energia elétrica aguardando confirmação.', time: '2h' },
-  { title: 'Relatório gerado', desc: 'Relatório financeiro anual está pronto para download.', time: '1d' },
-]
-
 export function Header({ crumbs, title, searchPlaceholder = 'Buscar no painel...', action, onOpenMobile }: HeaderProps) {
+  const navigate = useNavigate()
   const [openNotif, setOpenNotif] = useState(false)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unread, setUnread] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Buscar contagem de não lidas a cada 30s
+  useEffect(() => {
+    loadCount()
+    const interval = setInterval(loadCount, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Fechar ao clicar fora
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpenNotif(false)
+      }
+    }
+    document.addEventListener('mousedown', handle)
+    return () => document.removeEventListener('mousedown', handle)
+  }, [])
+
+  async function loadCount() {
+    try {
+      const count = await notificationsService.unreadCount()
+      setUnread(count)
+    } catch {}
+  }
+
+  async function handleOpenNotif() {
+    const next = !openNotif
+    setOpenNotif(next)
+    if (next) {
+      setLoading(true)
+      try {
+        const list = await notificationsService.list()
+        setNotifications(list)
+        // Marcar como lidas após abrir
+        if (list.some(n => !n.read)) {
+          await notificationsService.markAllRead()
+          setUnread(0)
+        }
+      } catch {
+        setNotifications([])
+      } finally {
+        setLoading(false)
+      }
+    }
+  }
+
+  function handleNotifClick(n: Notification) {
+    setOpenNotif(false)
+    if (n.link) navigate(n.link)
+  }
+
+  const TYPE_COLOR: Record<string, string> = {
+    SUPPORT: 'bg-orange-100 text-orange-700',
+    INFO: 'bg-blue-100 text-blue-700',
+    SUCCESS: 'bg-green-100 text-green-700',
+    WARNING: 'bg-yellow-100 text-yellow-700',
+  }
 
   return (
     <header className="sticky top-0 z-30 bg-brand-50/90 backdrop-blur-sm px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-brand-100/70">
@@ -41,30 +100,75 @@ export function Header({ crumbs, title, searchPlaceholder = 'Buscar no painel...
           />
         </div>
 
-        <div className="relative">
+        {/* Sino de notificações — dados reais */}
+        <div className="relative" ref={ref}>
           <button
-            onClick={() => setOpenNotif((v) => !v)}
+            onClick={handleOpenNotif}
             className="relative h-10 w-10 rounded-lg border border-brand-100 bg-white flex items-center justify-center text-brand-700 hover:bg-brand-50 shrink-0"
           >
             <Bell className="h-[18px] w-[18px]" />
-            <span className="absolute top-2 right-2.5 h-1.5 w-1.5 rounded-full bg-red-500" />
+            {unread > 0 && (
+              <span className="absolute -top-1 -right-1 h-5 w-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {unread > 9 ? '9+' : unread}
+              </span>
+            )}
           </button>
+
           {openNotif && (
-            <>
-              <div className="fixed inset-0 z-30" onClick={() => setOpenNotif(false)} />
-              <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-soft border border-brand-100 z-40 overflow-hidden">
-                <div className="px-4 py-3 border-b border-brand-100 font-bold text-sm text-brand-900">Notificações</div>
-                {notifications.map((n, i) => (
-                  <div key={i} className="px-4 py-3 border-b border-brand-100 last:border-0 hover:bg-brand-50">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold text-brand-900">{n.title}</p>
-                      <span className="text-[11px] text-brand-300">{n.time}</span>
-                    </div>
-                    <p className="text-xs text-brand-300 mt-0.5">{n.desc}</p>
-                  </div>
-                ))}
+            <div className="absolute right-0 mt-2 w-80 bg-white rounded-xl shadow-soft border border-brand-100 z-40 overflow-hidden">
+              <div className="px-4 py-3 border-b border-brand-100 flex items-center justify-between">
+                <p className="font-bold text-sm text-brand-900">Notificações</p>
+                {notifications.some(n => !n.read) && (
+                  <button
+                    onClick={async () => {
+                      await notificationsService.markAllRead()
+                      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+                      setUnread(0)
+                    }}
+                    className="text-xs text-brand-400 hover:text-brand-700"
+                  >
+                    Marcar todas como lidas
+                  </button>
+                )}
               </div>
-            </>
+
+              <div className="max-h-80 overflow-y-auto">
+                {loading ? (
+                  <div className="py-8 text-center text-brand-300 text-sm">Carregando...</div>
+                ) : notifications.length === 0 ? (
+                  <div className="py-8 text-center text-brand-300 text-sm">
+                    <Bell className="h-8 w-8 mx-auto mb-2 text-brand-100" />
+                    Nenhuma notificação
+                  </div>
+                ) : (
+                  notifications.map(n => (
+                    <button
+                      key={n.id}
+                      onClick={() => handleNotifClick(n)}
+                      className={`w-full text-left px-4 py-3 border-b border-brand-50 last:border-0 hover:bg-brand-50 transition-colors ${!n.read ? 'bg-blue-50/40' : ''}`}
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded mt-0.5 shrink-0 ${TYPE_COLOR[n.type] || TYPE_COLOR['INFO']}`}>
+                          {n.type}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-1">
+                            <p className={`text-sm leading-tight ${!n.read ? 'font-semibold text-brand-900' : 'text-brand-700'}`}>
+                              {n.title}
+                            </p>
+                            {!n.read && <span className="h-2 w-2 bg-blue-500 rounded-full shrink-0 mt-1" />}
+                          </div>
+                          {n.body && <p className="text-xs text-brand-400 mt-0.5 line-clamp-2">{n.body}</p>}
+                          <p className="text-xs text-brand-300 mt-1">
+                            {n.createdAt ? new Date(n.createdAt).toLocaleString('pt-BR') : ''}
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
           )}
         </div>
 

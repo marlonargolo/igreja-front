@@ -11,8 +11,10 @@ import { MetricCard } from '@/components/ui/Misc'
 import { formatCurrency } from '@/lib/format'
 import { useToast } from '@/components/ui/Extras'
 import { financeService, type Transaction } from '@/services'
+import { useConfig } from '@/lib/ConfigContext'
 
-const CATEGORIAS_RECEITA = ['Dízimo', 'Oferta', 'Oferta Alçada', 'Campanha', 'Doação', 'Outros']
+// REMOVA esta linha - está causando o erro
+// const CATEGORIAS_RECEITA = categoriasFinanceiras.filter(c => ...)
 
 export default function Receitas() {
   const showToast = useToast()
@@ -21,12 +23,23 @@ export default function Receitas() {
   const [open, setOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const { categoriasFinanceiras } = useConfig()
   const [form, setForm] = useState({
     description: '',
     amount: '',
     date: new Date().toISOString().split('T')[0],
     category: 'Dízimo',
   })
+
+  // MOVA a constante para DENTRO do componente, DEPOIS de obter categoriasFinanceiras
+  const CATEGORIAS_RECEITA = categoriasFinanceiras.filter(c =>
+    !c.toLowerCase().includes('agua') &&
+    !c.toLowerCase().includes('luz') &&
+    !c.toLowerCase().includes('aluguel') &&
+    !c.toLowerCase().includes('material') &&
+    !c.toLowerCase().includes('manutencao') &&
+    !c.toLowerCase().includes('equipamento')
+  )
 
   useEffect(() => { load() }, [])
 

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/Input'
 import { Checkbox } from '@/components/ui/Input'
 import { authService } from "@/services/auth.service"
 import { useToast } from '@/components/ui/Extras'
+import { useApp } from '@/lib/AppContext'
 
 const features = [
   { icon: Share2, title: 'Gestão Multi-Igrejas', desc: 'Monitore sedes e congregações simultaneamente.' },
@@ -16,6 +17,7 @@ const features = [
 export default function Login() {
   const navigate = useNavigate()
   const showToast = useToast()
+  const { setUser } = useApp()
   const [showPass, setShowPass] = useState(false)
   const [email, setEmail] = useState(() => localStorage.getItem('saved_email') || '')
   const [remember, setRemember] = useState(() => Boolean(localStorage.getItem('saved_email')))
@@ -27,6 +29,13 @@ export default function Login() {
     setIsLoading(true)
     try {
       const user = await authService.login({ email, password })
+      
+      // Salvar usuário no AppContext
+      setUser(user)
+      
+      // Salvar no localStorage para persistência
+      localStorage.setItem('user', JSON.stringify(user))
+      
       if (remember) {
         localStorage.setItem('remember_me', 'true')
         localStorage.setItem('saved_email', email)
@@ -34,6 +43,7 @@ export default function Login() {
         localStorage.removeItem('remember_me')
         localStorage.removeItem('saved_email')
       }
+      
       if (user.churches && user.churches.length > 0) {
         navigate('/selecionar-igreja')
       } else {

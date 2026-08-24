@@ -1,6 +1,6 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { Save } from 'lucide-react'
+import { Save, Camera } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Input, Select, Textarea } from '@/components/ui/Input'
@@ -27,6 +27,8 @@ export default function MemberForm() {
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState('https://i.pravatar.cc/150?u=novo-membro')
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string>('https://i.pravatar.cc/150?u=novo-membro')
 
   useEffect(() => {
     if (isEdit && id) {
@@ -51,7 +53,10 @@ export default function MemberForm() {
             memberSince: m.memberSince || new Date().toISOString().split('T')[0],
             notes: m.notes || '',
           })
-          if (m.avatarUrl) setAvatarUrl(m.avatarUrl)
+          if (m.avatarUrl) {
+            setAvatarUrl(m.avatarUrl)
+            setAvatarPreview(m.avatarUrl)
+          }
         })
         .catch(() => showToast('Falha ao carregar membro.'))
         .finally(() => setLoading(false))
@@ -65,6 +70,15 @@ export default function MemberForm() {
         ? prev.funcoesSelecionadas.filter(x => x !== f)
         : [...prev.funcoesSelecionadas, f],
     }))
+  }
+
+  function handleAvatarChange(file: File | null) {
+    setAvatarFile(file)
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = e => setAvatarPreview(e.target?.result as string)
+      reader.readAsDataURL(file)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -96,13 +110,27 @@ export default function MemberForm() {
     }
 
     try {
+      let savedId: number
+
       if (isEdit && id) {
         await membersService.update(Number(id), payload)
+        savedId = Number(id)
         showToast('Membro atualizado com sucesso.')
       } else {
-        await membersService.create(payload)
+        const saved = await membersService.create(payload) as any
+        savedId = saved?.id || 0
         showToast('Membro cadastrado com sucesso.')
       }
+
+      // Upload da foto se selecionada
+      if (avatarFile && savedId) {
+        try {
+          await membersService.uploadAvatar(savedId, avatarFile)
+        } catch {
+          showToast('Membro salvo, mas falha no upload da foto.')
+        }
+      }
+
       navigate('/membros')
     } catch (err: any) {
       showToast(err.message || 'Falha ao salvar membro.')
@@ -124,21 +152,30 @@ export default function MemberForm() {
     >
       <form onSubmit={handleSubmit} className="max-w-4xl space-y-6">
 
-        {/* Foto */}
         <Card>
           <CardHeader><CardTitle>Foto</CardTitle></CardHeader>
           <CardBody className="flex items-center gap-5 pt-2">
-            <img src={avatarUrl} className="h-20 w-20 rounded-full object-cover" alt="" />
+            <div className="relative">
+              <img src={avatarPreview} className="h-20 w-20 rounded-full object-cover" alt="" />
+              <label className="absolute bottom-0 right-0 h-6 w-6 bg-brand-800 rounded-full flex items-center justify-center cursor-pointer hover:bg-brand-700">
+                <Camera className="h-3.5 w-3.5 text-white" />
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={e => handleAvatarChange(e.target.files?.[0] || null)}
+                />
+              </label>
+            </div>
             <div>
-              <Button type="button" variant="outline" size="sm" onClick={() => showToast('Salve o membro primeiro para adicionar foto.')}>
-                Alterar Foto
-              </Button>
-              <p className="text-xs text-brand-300 mt-2">PNG ou JPG. Máx. 2MB.</p>
+              <p className="text-sm font-semibold text-brand-900">Foto do Membro</p>
+              <p className="text-xs text-brand-300 mt-1">
+                {avatarFile ? avatarFile.name : 'Clique no ícone para alterar'}
+              </p>
             </div>
           </CardBody>
         </Card>
 
-        {/* Dados Pessoais */}
         <Card>
           <CardHeader><CardTitle>Dados Pessoais</CardTitle></CardHeader>
           <CardBody className="grid sm:grid-cols-2 gap-5 pt-2">
@@ -163,7 +200,6 @@ export default function MemberForm() {
           </CardBody>
         </Card>
 
-        {/* Vínculo Eclesiástico */}
         <Card>
           <CardHeader><CardTitle>Vínculo Eclesiástico</CardTitle></CardHeader>
           <CardBody className="grid sm:grid-cols-2 gap-5 pt-2">
@@ -178,7 +214,6 @@ export default function MemberForm() {
             <Input label="Data de Batismo" type="date" value={formData.baptismDate} onChange={e => setFormData({ ...formData, baptismDate: e.target.value })} />
             <Input label="Membro desde" type="date" value={formData.memberSince} onChange={e => setFormData({ ...formData, memberSince: e.target.value })} />
 
-            {/* Funções — múltipla seleção */}
             <div className="sm:col-span-2">
               <p className="text-sm font-semibold text-brand-900 mb-2">Funções (pode ter várias)</p>
               <div className="flex flex-wrap gap-2">
