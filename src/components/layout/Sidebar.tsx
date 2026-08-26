@@ -62,6 +62,7 @@ const navPrincipal: NavItem[] = [
       { to: '/contabilidade/exportacao', label: 'Exportação Contábil' },
       { to: '/contabilidade/demonstracoes', label: 'Demonstrações' },
       { to: '/contabilidade/plano-de-contas', label: 'Plano de Contas' },
+      { to: '/contabilidade/configuracoes', label: 'Configurações' },
     ],
   },
   {
@@ -234,7 +235,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
           )}
           <div className={cn('flex items-center gap-3', collapsed && 'justify-center')}>
             <img
-              src={`https://i.pravatar.cc/150?u=${user?.email || 'user'}`}
+              src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=1E3A5F&color=fff`}
               alt={user?.name || 'Usuário'}
               className="h-9 w-9 rounded-full object-cover shrink-0"
             />

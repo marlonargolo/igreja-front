@@ -7,6 +7,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Extras'
 import { assetsService } from '@/services'
+import { useApp } from '@/lib/AppContext'
 
 const CATEGORIAS = ['Imóveis', 'Veículos', 'Equipamentos', 'Instrumentos Musicais', 'Mobiliário', 'Eletrônicos', 'Outros']
 
@@ -22,6 +23,7 @@ export default function AssetForm() {
     acquisitionDate: new Date().toISOString().split('T')[0],
     serialNumber: '', manufacturer: '', model: '', status: 'ACTIVE', notes: '',
   })
+  const { church } = useApp()
 
   useEffect(() => {
     if (isEdit && id) {
@@ -50,7 +52,7 @@ export default function AssetForm() {
     setSaving(true)
     try {
       const payload = {
-        churchId: 2,
+        churchId: church?.id ? Number(church.id) : undefined,
         code: form.code || undefined,
         description: form.description,
         categoryId: CATEGORIAS.indexOf(form.category) + 1,

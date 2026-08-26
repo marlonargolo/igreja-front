@@ -10,15 +10,16 @@ import { useToast } from '@/components/ui/Extras'
 import { useApp } from '@/lib/AppContext'
 import { useNavigate } from 'react-router-dom'
 import { churchesService, type Church } from '@/services/churches.service'
+import { fetchAddressByCep, fetchCompanyByCnpj } from '@/services/externalApis.service'
 
 const ADMIN_ROLES = ['ROOT', 'ADMIN', 'PASTOR_PRINCIPAL']
 
 // URL base para servir arquivos do backend
-const FILES_BASE = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://2.24.80.229:3000'
+const FILES_BASE = 'http://2.24.80.229:3000'
 
 function churchLogoUrl(logoUrl?: string): string | undefined {
   if (!logoUrl) return undefined
-  if (logoUrl.startsWith('http')) return logoUrl
+  if (logoUrl.startsWith('http') || logoUrl.startsWith('blob:')) return logoUrl
   return `${FILES_BASE}${logoUrl}`
 }
 
@@ -35,7 +36,7 @@ export default function CongregarcoesPage() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '', city: '', state: '', address: '',
-    phone: '', email: '', cnpj: '',
+    phone: '', email: '', cnpj: '', cep: '' // Adicione cep aqui
   })
 
   const isAdmin = user?.roles?.some(r => ADMIN_ROLES.includes(r)) ?? false
@@ -50,6 +51,42 @@ export default function CongregarcoesPage() {
       showToast('Falha ao carregar congregações.')
     } finally {
       setLoading(false)
+    }
+  }
+  // Função para buscar endereço por CEP
+  async function handleCepSearch(cep: string) {
+    try {
+      const data = await fetchAddressByCep(cep)
+      setForm(prev => ({
+        ...prev,
+        city: data.city,
+        state: data.state,
+        address: data.street ? `${data.street}${data.neighborhood ? ` - ${data.neighborhood}` : ''}` : prev.address,
+        cep: data.cep
+      }))
+      showToast('CEP encontrado com sucesso!')
+    } catch (error: any) {
+      showToast(error.message || 'Erro ao buscar CEP')
+    }
+  }
+
+  // Função para buscar dados por CNPJ
+  async function handleCnpjSearch(cnpj: string) {
+    try {
+      const data = await fetchCompanyByCnpj(cnpj)
+      setForm(prev => ({
+        ...prev,
+        name: data.fantasyName || data.name || prev.name,
+        city: data.city || prev.city,
+        state: data.state || prev.state,
+        address: data.street ? `${data.street}${data.number ? `, ${data.number}` : ''}` : prev.address,
+        phone: data.phone || prev.phone,
+        email: data.email || prev.email,
+        cnpj: data.cnpj || prev.cnpj
+      }))
+      showToast('CNPJ encontrado com sucesso!')
+    } catch (error: any) {
+      showToast(error.message || 'Erro ao buscar CNPJ')
     }
   }
 
@@ -110,6 +147,8 @@ export default function CongregarcoesPage() {
       setSaving(false)
     }
   }
+
+
 
   const visible = isAdmin ? churches : churches.filter(c => String(c.id) === String(church?.id))
 
@@ -210,7 +249,12 @@ export default function CongregarcoesPage() {
       {/* Modal nova congregação */}
       <Modal
         open={openNew}
-        onClose={() => { setOpenNew(false); setLogoFile(null); setLogoPreview(null) }}
+        onClose={() => { 
+          setOpenNew(false); 
+          setLogoFile(null); 
+          setLogoPreview(null);
+          setForm(prev => ({ ...prev, cep: '' }));
+        }}
         title="Nova Congregação"
         footer={
           <>
@@ -228,18 +272,84 @@ export default function CongregarcoesPage() {
             onChange={e => setForm({ ...form, name: e.target.value })}
             required
           />
+          
+          {/* CNPJ com busca automática */}
+          <div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input
+                  label="CNPJ"
+                  value={form.cnpj}
+                  onChange={e => {
+                    const value = e.target.value
+                    setForm({ ...form, cnpj: value })
+                    // Busca automática quando tiver 14 dígitos
+                    if (value.replace(/\D/g, '').length === 14) {
+                      handleCnpjSearch(value)
+                    }
+                  }}
+                  placeholder="00.000.000/0001-00"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-6"
+                onClick={() => form.cnpj && handleCnpjSearch(form.cnpj)}
+                disabled={!form.cnpj || form.cnpj.replace(/\D/g, '').length !== 14}
+              >
+                Buscar
+              </Button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <Input label="Cidade" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} />
             <Input label="UF" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} maxLength={2} placeholder="SP" />
           </div>
-          <Input label="Endereço" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
+          
+          {/* Endereço com busca por CEP */}
+          <div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input
+                  label="CEP"
+                  value={form.cep || ''}
+                  onChange={e => {
+                    const value = e.target.value
+                    setForm({ ...form, cep: value })
+                    // Busca automática quando tiver 8 dígitos
+                    if (value.replace(/\D/g, '').length === 8) {
+                      handleCepSearch(value)
+                    }
+                  }}
+                  placeholder="00000-000"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-6"
+                onClick={() => form.cep && handleCepSearch(form.cep)}
+                disabled={!form.cep || form.cep.replace(/\D/g, '').length !== 8}
+              >
+                Buscar
+              </Button>
+            </div>
+          </div>
+
+          <Input 
+            label="Endereço" 
+            value={form.address} 
+            onChange={e => setForm({ ...form, address: e.target.value })} 
+          />
+          
           <div className="grid grid-cols-2 gap-4">
             <Input label="Telefone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
             <Input label="E-mail" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
           </div>
-          <Input label="CNPJ" value={form.cnpj} onChange={e => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0001-00" />
 
-          {/* Upload de logo */}
+          {/* Upload de logo (mantido igual) */}
           <div>
             <p className="text-sm font-semibold text-brand-900 mb-2 flex items-center gap-1.5">
               <Upload className="h-3.5 w-3.5" /> Logo da Igreja

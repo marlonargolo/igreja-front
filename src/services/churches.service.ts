@@ -1,6 +1,7 @@
 import { http } from '@/lib/http'
 import type { ApiSuccess } from '@/types/api'
 
+
 export interface Church {
   id: number
   name: string
@@ -16,12 +17,15 @@ export interface Church {
   pastorId?: number
 }
 
-export const FILES_BASE = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://2.24.80.229:3000'
+export const FILES_BASE = 'http://2.24.80.229:3000'
 
-export function resolveLogoUrl(logoUrl?: string): string | undefined {
-  if (!logoUrl) return undefined
-  if (logoUrl.startsWith('http')) return logoUrl
-  return `${FILES_BASE}${logoUrl}`
+export function resolveLogoUrl(url?: string): string | undefined {
+  if (!url) return undefined
+  if (url.startsWith('http') || url.startsWith('blob:')) return url
+  // URLs do tipo /api/files/... — absolutas a partir da raiz do servidor
+  if (url.startsWith('/api/')) return `${FILES_BASE}${url}`
+  // URLs legadas /uploads/...
+  return `${FILES_BASE}${url}`
 }
 
 export const churchesService = {

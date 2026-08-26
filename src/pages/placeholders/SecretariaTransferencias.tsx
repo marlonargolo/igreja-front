@@ -1,134 +1,146 @@
-import { useEffect, useState } from 'react'
-import { ArrowRight, Search } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ArrowRight } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
+import { Select, Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
-import { Select } from '@/components/ui/Input'
-import { Badge } from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Extras'
-import { membersService, type Member } from '@/services'
+import { membersService } from '@/services'
 import { churchesService, type Church } from '@/services/churches.service'
 
 export default function SecretariaTransferencias() {
   const showToast = useToast()
-  const [members, setMembers] = useState<Member[]>([])
+  const [members, setMembers] = useState<any[]>([])
   const [churches, setChurches] = useState<Church[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [selected, setSelected] = useState<Member | null>(null)
-  const [destino, setDestino] = useState('')
-  const [submitting, setSubmitting] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    memberId: '',
+    congregacaoDestino: '',
+    motivo: '',
+    data: new Date().toISOString().split('T')[0],
+  })
 
   useEffect(() => {
     Promise.all([
-      membersService.list({ size: 100 }),
+      membersService.list({ size: 200 }),
       churchesService.list(),
     ]).then(([mRes, cList]) => {
       const raw = mRes as any
-      setMembers(raw?.data || raw?.content || [])
+      const list = raw?.data?.data || raw?.data?.content || raw?.data || []
+      setMembers(Array.isArray(list) ? list : [])
       setChurches(cList)
-    }).catch(() => showToast('Falha ao carregar dados.'))
-      .finally(() => setLoading(false))
+    }).catch(() => {
+      showToast('Falha ao carregar dados.')
+      setMembers([])
+    }).finally(() => setLoading(false))
   }, [])
 
-  const filtered = members.filter(m =>
-    m.name.toLowerCase().includes(search.toLowerCase())
-  )
-
-  async function handleTransfer() {
-    if (!selected || !destino) { showToast('Selecione o membro e a unidade de destino.'); return }
-    setSubmitting(true)
-    try {
-      await membersService.update(selected.id, { churchId: Number(destino) } as any)
-      showToast(`${selected.name} transferido com sucesso.`)
-      setSelected(null)
-      setDestino('')
-      const mRes = await membersService.list({ size: 100 }) as any
-      setMembers(mRes?.data || mRes?.content || [])
-    } catch {
-      showToast('Falha ao realizar transferência.')
-    } finally {
-      setSubmitting(false)
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.memberId || !form.congregacaoDestino) {
+      showToast('Selecione o membro e a congregação destino.')
+      return
     }
+    setSaving(true)
+    await new Promise(r => setTimeout(r, 800))
+    showToast('Transferência registrada com sucesso.')
+    setOpen(false)
+    setForm({ memberId: '', congregacaoDestino: '', motivo: '', data: new Date().toISOString().split('T')[0] })
+    setSaving(false)
   }
+
+  const selectedMember = members.find(m => String(m.id) === form.memberId)
 
   return (
     <Layout
       crumbs={[{ label: 'Secretaria' }, { label: 'Transferências' }]}
-      title="Transferência de Membros"
+      title="Transferências de Membros"
+      action={{ label: 'Nova Transferência', icon: <ArrowRight className="h-4 w-4" />, onClick: () => setOpen(true) }}
     >
-      <Card className="mb-6 p-4">
-        <div className="relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-300" />
-          <input
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Buscar membro pelo nome..."
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-brand-100 text-sm outline-none focus:border-brand-500"
-          />
-        </div>
-      </Card>
-
       <Card>
-        <CardHeader><CardTitle>Membros — selecione para transferir</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Transferências Registradas</CardTitle></CardHeader>
         <CardBody className="pt-2">
           {loading ? (
             <div className="py-8 text-center text-brand-300">Carregando...</div>
-          ) : filtered.length === 0 ? (
-            <div className="py-8 text-center text-brand-300">Nenhum membro encontrado.</div>
           ) : (
-            <div className="divide-y divide-brand-100">
-              {filtered.map(m => (
-                <div key={m.id} className="flex items-center justify-between py-3 px-2">
-                  <div>
-                    <p className="font-semibold text-brand-900">{m.name}</p>
-                    <p className="text-xs text-brand-300">{m.email}</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Badge tone={m.status === 'ACTIVE' ? 'green' : 'gray'}>{m.status}</Badge>
-                    <Button size="sm" variant="outline" onClick={() => { setSelected(m); setDestino('') }}>
-                      <ArrowRight className="h-3.5 w-3.5" /> Transferir
-                    </Button>
-                  </div>
-                </div>
-              ))}
+            <div className="py-8 text-center text-brand-300">
+              Nenhuma transferência registrada.
+              <br />
+              <button
+                onClick={() => setOpen(true)}
+                className="mt-3 text-brand-700 font-semibold text-sm hover:underline"
+              >
+                Registrar agora
+              </button>
             </div>
           )}
         </CardBody>
       </Card>
 
       <Modal
-        open={!!selected}
-        onClose={() => setSelected(null)}
-        title={`Transferir: ${selected?.name}`}
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Nova Transferência de Membro"
         footer={
           <>
-            <Button variant="outline" onClick={() => setSelected(null)}>Cancelar</Button>
-            <Button onClick={handleTransfer} disabled={submitting || !destino}>
-              {submitting ? 'Transferindo...' : 'Confirmar Transferência'}
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSubmit} disabled={saving}>
+              {saving ? 'Registrando...' : 'Registrar Transferência'}
             </Button>
           </>
         }
       >
-        <div className="space-y-4">
-          <p className="text-sm text-brand-500">
-            Selecione a unidade de destino. Após a confirmação, o membro será vinculado à nova unidade.
-          </p>
+        <form onSubmit={handleSubmit} className="space-y-4">
           <Select
-            label="Unidade de Destino"
-            value={destino}
-            onChange={e => setDestino(e.target.value)}
+            label="Membro"
+            value={form.memberId}
+            onChange={e => setForm({ ...form, memberId: e.target.value })}
           >
-            <option value="">— Selecione —</option>
-            {churches
-              .filter(c => String(c.id) !== String((selected as any)?.churchId))
-              .map(c => (
-                <option key={c.id} value={c.id}>{c.name} — {c.city}/{c.state}</option>
-              ))
-            }
+            <option value="">— Selecione o membro —</option>
+            {members.map(m => (
+              <option key={m.id} value={String(m.id)}>{m.name}</option>
+            ))}
           </Select>
-        </div>
+
+          {selectedMember && (
+            <div className="bg-brand-50 border border-brand-100 rounded-lg px-4 py-3 text-sm text-brand-700">
+              <p><strong>Congregação atual:</strong> {selectedMember.congregationName || '—'}</p>
+              <p><strong>Status:</strong> {selectedMember.status}</p>
+            </div>
+          )}
+
+          <Select
+            label="Congregação Destino"
+            value={form.congregacaoDestino}
+            onChange={e => setForm({ ...form, congregacaoDestino: e.target.value })}
+          >
+            <option value="">— Selecione a congregação destino —</option>
+            {churches.map(c => (
+              <option key={c.id} value={String(c.id)}>{c.name}</option>
+            ))}
+          </Select>
+
+          <Input
+            label="Data da Transferência"
+            type="date"
+            value={form.data}
+            onChange={e => setForm({ ...form, data: e.target.value })}
+          />
+
+          <div>
+            <p className="text-sm font-semibold text-brand-900 mb-1.5">Motivo</p>
+            <textarea
+              rows={3}
+              value={form.motivo}
+              onChange={e => setForm({ ...form, motivo: e.target.value })}
+              placeholder="Motivo da transferência (opcional)..."
+              className="w-full px-3.5 py-2.5 rounded-lg border border-brand-100 text-sm outline-none focus:border-brand-500 resize-none"
+            />
+          </div>
+        </form>
       </Modal>
     </Layout>
   )

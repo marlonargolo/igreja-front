@@ -7,6 +7,7 @@ import { Input, Select, Textarea } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Extras'
 import { membersService } from '@/services'
+import { useApp } from '@/lib/AppContext'
 
 const CARGOS = ['', 'Pastor(a)', 'Presbítero', 'Missionário(a)', 'Diácono', 'Diaconisa', 'Obreiro', 'Membro']
 const FUNCOES = ['Músico', 'Professor EBD', 'Tesoureiro(a)', 'Secretário(a)', 'Líder de Jovens', 'Líder de Louvor', 'Auxiliar']
@@ -29,6 +30,7 @@ export default function MemberForm() {
   const [avatarUrl, setAvatarUrl] = useState('https://i.pravatar.cc/150?u=novo-membro')
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string>('https://i.pravatar.cc/150?u=novo-membro')
+  const { church } = useApp()
 
   useEffect(() => {
     if (isEdit && id) {
@@ -89,7 +91,7 @@ export default function MemberForm() {
     }
     setSaving(true)
     const payload = {
-      churchId: 2,
+      churchId: church?.id ? Number(church.id) : undefined,
       name: formData.name,
       email: formData.email,
       phone: formData.phone || undefined,

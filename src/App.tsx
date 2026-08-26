@@ -48,6 +48,8 @@ import AdminBackup from '@/pages/admin/AdminBackup'
 import Demonstracoes from '@/pages/contabilidade/Demonstracoes'
 import PlanoDeContas from '@/pages/contabilidade/PlanoDeContas'
 import Chamados from '@/pages/admin/Chamados'
+import ContabilidadeConfiguracoes from '@/pages/contabilidade/ContabilidadeConfiguracoes'
+
 
 function withChurch(el: React.ReactNode) {
   return <ProtectedRoute requireChurch>{el}</ProtectedRoute>
@@ -101,6 +103,7 @@ export default function App() {
             <Route path="/contabilidade/fechamento" element={withChurch(<Accounting />)} />
             <Route path="/contabilidade/exportacao" element={withChurch(<Accounting />)} />
             <Route path="/contabilidade/backup" element={withChurch(<Accounting />)} />
+            <Route path="/contabilidade/configuracoes" element={withChurch(<ContabilidadeConfiguracoes />)} />
 
             <Route path="/configuracoes/congregacoes" element={withChurch(<CongregarcoesPage />)} />
             <Route path="/admin/igrejas" element={withChurch(<AdminIgrejas />)} />

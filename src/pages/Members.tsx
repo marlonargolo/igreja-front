@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/Input'
 import { Pagination, EmptyState } from '@/components/ui/Misc'
 import { membersService, type Member } from '@/services'
 import { useToast } from '@/components/ui/Extras'
+import { resolveLogoUrl } from '@/services/churches.service'
 
 const statusTone: Record<string, 'green' | 'gray' | 'blue'> = {
   ACTIVE: 'green',
@@ -48,21 +49,21 @@ export default function Members() {
         status: status !== 'Todas' ? status : undefined,
         role: role !== 'Todas' ? role : undefined,
         congregationId: congregation !== 'Todas' ? Number(congregation) : undefined,
-        // churchId será adicionado pelo service
       }
-      const res = await membersService.list(params)
-      const list = Array.isArray(res.data) ? res.data : (res.data?.data || [])
-      setMembers(list)
-      setTotal(res.meta?.total || res.data?.meta?.total || list.length)
-      // Extrair opções de filtro
-      const congSet = new Set(res.data.map(m => m.congregationName || '—'))
-      setCongregationOptions(['Todas', ...Array.from(congSet)])
-      const roleSet = new Set(res.data.map(m => m.role))
-      setRoleOptions(['Todas', ...Array.from(roleSet)])
+      const res = await membersService.list(params) as any
+      const list = res?.data?.data || res?.data?.content || res?.data || []
+      const safeList = Array.isArray(list) ? list : []
+      setMembers(safeList)
+      setTotal(res?.data?.meta?.total || res?.meta?.total || safeList.length)
+
+      if (safeList.length > 0) {
+        const congSet = new Set(safeList.map((m: any) => m.congregationName || '—').filter(Boolean))
+        setCongregationOptions(['Todas', ...Array.from(congSet) as string[]])
+        const roleSet = new Set(safeList.map((m: any) => m.role).filter(Boolean))
+        setRoleOptions(['Todas', ...Array.from(roleSet) as string[]])
+      }
     } catch (err: any) {
-      console.error('Erro ao carregar membros:', err)
       showToast('Falha ao carregar membros.')
-      // Fallback para não quebrar
       setMembers([])
       setTotal(0)
     } finally {
@@ -150,7 +151,9 @@ export default function Members() {
                   </Td>
                   <Td>
                     <img
-                      src={m.avatarUrl || 'https://i.pravatar.cc/150'}
+                      src={resolveLogoUrl(m.avatarUrl) ||
+                        `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1E3A5F&color=fff`
+                      }
                       className="h-9 w-9 rounded-full object-cover"
                       alt=""
                     />

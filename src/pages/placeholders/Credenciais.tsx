@@ -20,7 +20,8 @@ export default function Credenciais() {
     membersService.list({ size: 200 })
       .then(res => {
         const raw = res as any
-        setMembers(raw?.data || raw?.content || [])
+        const list = raw?.data?.data || raw?.data?.content || raw?.data || []
+        setMembers(Array.isArray(list) ? list : [])
       })
       .catch(() => showToast('Falha ao carregar membros.'))
       .finally(() => setLoading(false))

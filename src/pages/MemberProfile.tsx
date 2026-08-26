@@ -12,6 +12,8 @@ import { EmptyState } from '@/components/ui/Misc'
 import { useApp } from '@/lib/AppContext'
 import { http } from '@/lib/http'
 import type { ApiSuccess } from '@/types/api'
+import { resolveLogoUrl } from '@/services/churches.service'
+
 
 interface Occurrence {
   id: number
@@ -123,7 +125,7 @@ export default function MemberProfile() {
         </div>
       </div>
       <div class="body">
-        <img class="avatar" src="${member.avatarUrl || `https://i.pravatar.cc/150?u=${member.email}`}" />
+        <img class="avatar" src="${resolveLogoUrl(member.avatarUrl) || `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=1E3A5F&color=fff`}" />
         <div class="info">
           <h3>${member.name}</h3>
           <p><strong>Cargo:</strong> ${(member as any).cargo || '—'}</p>
@@ -233,7 +235,13 @@ export default function MemberProfile() {
       <div className="h-2 rounded-t-2xl bg-brand-800 -mb-2" />
       <Card className="rounded-t-none">
         <CardBody className="pt-6 flex flex-col md:flex-row md:items-center gap-5 md:gap-8">
-          <img src={member.avatarUrl || 'https://i.pravatar.cc/150'} className="h-20 w-20 rounded-full object-cover shrink-0" alt="" />
+          <img
+            src={resolveLogoUrl(member.avatarUrl) ||
+              `https://ui-avatars.com/api/?name=${encodeURIComponent(member.name)}&background=1E3A5F&color=fff`
+            }
+            className="h-16 w-16 rounded-full object-cover border-2 border-brand-200 bg-brand-50"
+            alt={member.name}
+          />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2.5 flex-wrap">
               <h2 className="text-xl font-extrabold text-brand-900">{member.name}</h2>

@@ -12,6 +12,8 @@ import { formatCurrency } from '@/lib/format'
 import { useToast } from '@/components/ui/Extras'
 import { financeService, type Transaction } from '@/services'
 import { useConfig } from '@/lib/ConfigContext'
+import { useApp } from '@/lib/AppContext'
+
 
 // REMOVA esta linha - está causando o erro
 // const CATEGORIAS_RECEITA = categoriasFinanceiras.filter(c => ...)
@@ -30,6 +32,7 @@ export default function Receitas() {
     date: new Date().toISOString().split('T')[0],
     category: 'Dízimo',
   })
+  const { church } = useApp()
 
   // MOVA a constante para DENTRO do componente, DEPOIS de obter categoriasFinanceiras
   const CATEGORIAS_RECEITA = categoriasFinanceiras.filter(c =>
@@ -45,11 +48,13 @@ export default function Receitas() {
 
   async function load() {
     setLoading(true)
-    try {
+      try {
       const res = await financeService.list({ size: 100, type: 'REVENUE' }) as any
-      setTransactions(res?.content || res?.data || res || [])
+      const list = res?.data?.data || res?.data?.content || res?.data || res || []
+      setTransactions(Array.isArray(list) ? list : [])
     } catch {
       showToast('Falha ao carregar receitas.')
+      setTransactions([])
     } finally {
       setLoading(false)
     }
@@ -98,7 +103,7 @@ export default function Receitas() {
         showToast('Receita atualizada com sucesso.')
       } else {
         await financeService.create({
-          churchId: 2,
+          churchId: church?.id ? Number(church.id) : undefined,
           type: 'REVENUE',
           description: form.description,
           amount: parseFloat(form.amount),

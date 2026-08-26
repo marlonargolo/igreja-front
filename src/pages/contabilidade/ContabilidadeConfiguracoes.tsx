@@ -19,36 +19,51 @@ interface FinancialAccount {
   bankName?: string
   agency?: string
   accountNumber?: string
+  currentBalance?: number
   active: boolean
 }
 
+interface FinancialCategory {
+  id: number
+  name: string
+  type: string
+}
+
 const ACCOUNT_TYPES = [
-  { value: 'CASH',       label: 'Caixa' },
-  { value: 'CHECKING',   label: 'Conta Corrente' },
-  { value: 'SAVINGS',    label: 'Poupança' },
+  { value: 'CHECKING', label: 'Conta Corrente' },
+  { value: 'SAVINGS', label: 'Poupança' },
+  { value: 'CASH', label: 'Caixa' },
   { value: 'INVESTMENT', label: 'Investimento' },
 ]
 
-export default function TesourariaConfiguracoes() {
+export default function ContabilidadeConfiguracoes() {
   const showToast = useToast()
   const { church } = useApp()
-  const { local, addLocal, removeLocal, reloadBackend } = useConfig()
-  const [tab, setTab] = useState('Fornecedores')
-
-  // Fornecedores
-  const [newFornecedor, setNewFornecedor] = useState('')
+  const { reloadBackend } = useConfig()
+  const [tab, setTab] = useState('Contas Bancárias')
 
   // Contas bancárias
   const [accounts, setAccounts] = useState<FinancialAccount[]>([])
   const [loadingAccounts, setLoadingAccounts] = useState(false)
   const [savingAccount, setSavingAccount] = useState(false)
   const [accountForm, setAccountForm] = useState({
-    name: '', type: 'CASH', bankName: '', agency: '', accountNumber: '',
+    name: '', type: 'CHECKING', bankName: '', agency: '', accountNumber: '',
   })
 
+  // Categorias financeiras
+  const [categories, setCategories] = useState<FinancialCategory[]>([])
+  const [loadingCats, setLoadingCats] = useState(false)
+  const [newCategory, setNewCategory] = useState('')
+  const [categoryType, setCategoryType] = useState('REVENUE')
+
+  // Formas de pagamento (local)
+  const { local, addLocal, removeLocal } = useConfig()
+  const [newForma, setNewForma] = useState('')
+
   useEffect(() => {
-    if (tab === 'Contas Bancárias') loadAccounts()
-  }, [tab])
+    loadAccounts()
+    loadCategories()
+  }, [])
 
   async function loadAccounts() {
     setLoadingAccounts(true)
@@ -61,6 +76,20 @@ export default function TesourariaConfiguracoes() {
       showToast('Falha ao carregar contas.')
     } finally {
       setLoadingAccounts(false)
+    }
+  }
+
+  async function loadCategories() {
+    setLoadingCats(true)
+    try {
+      const res = await http.get<ApiSuccess<any>>('/finance/categories', { page: 0, size: 200 })
+      const raw = (res.data as any)
+      const list = raw?.data || raw?.content || raw || []
+      setCategories(Array.isArray(list) ? list : [])
+    } catch {
+      showToast('Falha ao carregar categorias.')
+    } finally {
+      setLoadingCats(false)
     }
   }
 
@@ -80,9 +109,9 @@ export default function TesourariaConfiguracoes() {
         churchId: church?.id ? Number(church.id) : undefined,
       })
       showToast('Conta cadastrada com sucesso.')
-      setAccountForm({ name: '', type: 'CASH', bankName: '', agency: '', accountNumber: '' })
+      setAccountForm({ name: '', type: 'CHECKING', bankName: '', agency: '', accountNumber: '' })
       await loadAccounts()
-      await reloadBackend()
+      await reloadBackend() // Atualizar ConfigContext
     } catch (err: any) {
       showToast(err?.message || 'Falha ao cadastrar conta.')
     } finally {
@@ -102,68 +131,52 @@ export default function TesourariaConfiguracoes() {
     }
   }
 
+  async function handleAddCategory() {
+    if (!newCategory.trim()) return
+    try {
+      await http.post('/finance/categories', {
+        name: newCategory.trim(),
+        type: categoryType,
+      })
+      showToast('Categoria criada.')
+      setNewCategory('')
+      await loadCategories()
+      await reloadBackend()
+    } catch (err: any) {
+      showToast(err?.message || 'Falha ao criar categoria.')
+    }
+  }
+
+  async function handleDeleteCategory(id: number) {
+    if (!confirm('Excluir esta categoria?')) return
+    try {
+      await http.delete(`/finance/categories/${id}`)
+      showToast('Categoria excluída.')
+      await loadCategories()
+      await reloadBackend()
+    } catch {
+      showToast('Falha ao excluir categoria.')
+    }
+  }
+
   return (
     <Layout
-      crumbs={[{ label: 'Tesouraria' }, { label: 'Configurações' }]}
-      title="Configurações da Tesouraria"
+      crumbs={[{ label: 'Contabilidade' }, { label: 'Configurações' }]}
+      title="Configurações Financeiras"
     >
       <Tabs
-        tabs={['Fornecedores', 'Contas Bancárias']}
+        tabs={['Contas Bancárias', 'Categorias Financeiras', 'Formas de Pagamento']}
         active={tab}
         onChange={setTab}
         className="mb-6"
       />
 
-      {/* ── Fornecedores ── */}
-      {tab === 'Fornecedores' && (
-        <Card>
-          <CardHeader><CardTitle>Fornecedores</CardTitle></CardHeader>
-          <CardBody className="pt-2">
-            <p className="text-sm text-brand-400 mb-4">
-              Cadastre fornecedores para usar no lançamento de despesas.
-            </p>
-            <div className="flex gap-2 mb-6">
-              <Input
-                placeholder="Nome do fornecedor..."
-                value={newFornecedor}
-                onChange={e => setNewFornecedor(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && newFornecedor.trim()) {
-                    addLocal('fornecedores', newFornecedor.trim())
-                    setNewFornecedor('')
-                  }
-                }}
-              />
-              <Button onClick={() => {
-                if (!newFornecedor.trim()) return
-                addLocal('fornecedores', newFornecedor.trim())
-                setNewFornecedor('')
-              }}>
-                <Plus className="h-4 w-4" /> Adicionar
-              </Button>
-            </div>
-            <div className="space-y-2">
-              {local.fornecedores.map(item => (
-                <div key={item} className="flex items-center justify-between px-4 py-3 rounded-lg border border-brand-100 bg-brand-50/40">
-                  <span className="text-sm font-medium text-brand-900">{item}</span>
-                  <button onClick={() => removeLocal('fornecedores', item)} className="text-brand-200 hover:text-red-500">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-              {local.fornecedores.length === 0 && (
-                <p className="text-sm text-brand-300 py-4 text-center">Nenhum fornecedor cadastrado.</p>
-              )}
-            </div>
-          </CardBody>
-        </Card>
-      )}
-
       {/* ── Contas Bancárias ── */}
       {tab === 'Contas Bancárias' && (
         <div className="space-y-6">
+          {/* Formulário de nova conta */}
           <Card>
-            <CardHeader><CardTitle>Nova Conta</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Nova Conta Bancária</CardTitle></CardHeader>
             <CardBody className="pt-2">
               <form onSubmit={handleAddAccount} className="space-y-4">
                 <div className="grid sm:grid-cols-2 gap-4">
@@ -189,7 +202,7 @@ export default function TesourariaConfiguracoes() {
                     label="Banco (opcional)"
                     value={accountForm.bankName}
                     onChange={e => setAccountForm({ ...accountForm, bankName: e.target.value })}
-                    placeholder="Ex: Bradesco, Caixa..."
+                    placeholder="Ex: Bradesco, Itaú, Caixa..."
                   />
                   <Input
                     label="Agência (opcional)"
@@ -212,6 +225,7 @@ export default function TesourariaConfiguracoes() {
             </CardBody>
           </Card>
 
+          {/* Lista de contas */}
           <Card>
             <CardHeader><CardTitle>Contas Cadastradas ({accounts.length})</CardTitle></CardHeader>
             <CardBody className="pt-2">
@@ -238,9 +252,7 @@ export default function TesourariaConfiguracoes() {
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Badge tone={a.active ? 'green' : 'gray'}>
-                          {a.active ? 'Ativa' : 'Inativa'}
-                        </Badge>
+                        <Badge tone={a.active ? 'green' : 'gray'}>{a.active ? 'Ativa' : 'Inativa'}</Badge>
                         <button
                           onClick={() => handleDeleteAccount(a.id)}
                           className="text-brand-200 hover:text-red-500"
@@ -255,6 +267,87 @@ export default function TesourariaConfiguracoes() {
             </CardBody>
           </Card>
         </div>
+      )}
+
+      {/* ── Categorias Financeiras ── */}
+      {tab === 'Categorias Financeiras' && (
+        <Card>
+          <CardHeader><CardTitle>Categorias Financeiras</CardTitle></CardHeader>
+          <CardBody className="pt-2">
+            <p className="text-sm text-brand-400 mb-4">
+              Categorias usadas para classificar receitas e despesas em toda a plataforma.
+            </p>
+            <div className="flex gap-2 mb-6">
+              <Input
+                placeholder="Nome da categoria..."
+                value={newCategory}
+                onChange={e => setNewCategory(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddCategory()}
+              />
+              <Select
+                label=""
+                value={categoryType}
+                onChange={e => setCategoryType(e.target.value)}
+              >
+                <option value="REVENUE">Receita</option>
+                <option value="EXPENSE">Despesa</option>
+                <option value="TRANSFER">Transferência</option>
+              </Select>
+              <Button onClick={handleAddCategory}>
+                <Plus className="h-4 w-4" /> Adicionar
+              </Button>
+            </div>
+            {loadingCats ? (
+              <div className="py-6 text-center text-brand-300">Carregando...</div>
+            ) : (
+              <div className="space-y-2">
+                {categories.map(c => (
+                  <div key={c.id} className="flex items-center justify-between px-4 py-3 rounded-lg border border-brand-100 bg-brand-50/40">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-brand-900">{c.name}</span>
+                      <Badge tone={c.type === 'REVENUE' ? 'green' : c.type === 'EXPENSE' ? 'red' : 'blue'}>
+                        {c.type === 'REVENUE' ? 'Receita' : c.type === 'EXPENSE' ? 'Despesa' : 'Transferência'}
+                      </Badge>
+                    </div>
+                    <button onClick={() => handleDeleteCategory(c.id)} className="text-brand-200 hover:text-red-500">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {/* ── Formas de Pagamento ── */}
+      {tab === 'Formas de Pagamento' && (
+        <Card>
+          <CardHeader><CardTitle>Formas de Pagamento</CardTitle></CardHeader>
+          <CardBody className="pt-2">
+            <div className="flex gap-2 mb-6">
+              <Input
+                placeholder="Ex: PIX, Boleto, Cheque..."
+                value={newForma}
+                onChange={e => setNewForma(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && newForma.trim()) { addLocal('formasPagamento', newForma.trim()); setNewForma('') } }}
+              />
+              <Button onClick={() => { if (newForma.trim()) { addLocal('formasPagamento', newForma.trim()); setNewForma('') } }}>
+                <Plus className="h-4 w-4" /> Adicionar
+              </Button>
+            </div>
+            <div className="space-y-2">
+              {local.formasPagamento.map(item => (
+                <div key={item} className="flex items-center justify-between px-4 py-3 rounded-lg border border-brand-100 bg-brand-50/40">
+                  <span className="text-sm font-medium text-brand-900">{item}</span>
+                  <button onClick={() => removeLocal('formasPagamento', item)} className="text-brand-200 hover:text-red-500">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
       )}
     </Layout>
   )

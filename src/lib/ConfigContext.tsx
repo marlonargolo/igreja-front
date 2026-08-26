@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
-import { http } from '@/lib/http'
+import { http, tokenStore } from '@/lib/http'
 import type { ApiSuccess } from '@/types/api'
 
 interface BackendCategory { id: number; name: string; type?: string }
@@ -71,6 +71,8 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const loadBackend = useCallback(async () => {
+    // So carrega se houver token valido
+    if (!tokenStore.getAccess()) return
     setLoadingBackend(true)
     try {
       const [catRes, accRes] = await Promise.allSettled([
@@ -108,13 +110,9 @@ export function ConfigProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  const categoriasFinanceirasEffective = backend.categoriasFinanceiras.length > 0
-    ? backend.categoriasFinanceiras.map(c => c.name)
-    : ['Dizimo','Oferta','Oferta Alcada','Campanha','Conta de Agua','Conta de Luz','Material de Limpeza','Aluguel','Transferencia','Repasse']
-
-  const contasECaixasEffective = backend.contasECaixas.length > 0
-    ? backend.contasECaixas.map(a => a.name)
-    : ['Caixa Geral','Banco Bradesco','Banco Itau']
+  // Dados reais do backend — sem fallback mockado
+  const categoriasFinanceirasEffective = backend.categoriasFinanceiras.map(c => c.name)
+  const contasECaixasEffective = backend.contasECaixas.map(a => a.name)
 
   return (
     <ConfigCtx.Provider value={{

@@ -94,4 +94,13 @@ export const congregationsService = {
     )
     return res.data
   },
+  async listByChurch(churchId: number) {
+    const res = await http.get<ApiSuccess<any>>('/congregations', {
+      churchId,
+      page: 0,
+      size: 100,
+    })
+    const raw = res.data
+    return raw?.data || raw?.content || raw || []
+  },
 }

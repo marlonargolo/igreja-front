@@ -9,12 +9,14 @@ import { Input, Select } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Extras'
 import { churchesService, type Church } from '@/services/churches.service'
+import { fetchAddressByCep, fetchCompanyByCnpj } from '@/services/externalApis.service'
 
-const FILES_BASE = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://2.24.80.229:3000'
+const FILES_BASE = 'http://2.24.80.229:3000'
 
 function logoUrl(url?: string): string | undefined {
   if (!url) return undefined
-  return url.startsWith('http') ? url : `${FILES_BASE}${url}`
+  if (url.startsWith('http') || url.startsWith('blob:')) return url
+  return `${FILES_BASE}${url}`
 }
 
 export default function AdminIgrejas() {
@@ -53,6 +55,43 @@ export default function AdminIgrejas() {
       reader.readAsDataURL(file)
     } else {
       setLogoPreview(null)
+    }
+  }
+  // Função para buscar endereço por CEP
+  async function handleCepSearch(cep: string) {
+    try {
+      const data = await fetchAddressByCep(cep)
+      setForm(prev => ({
+        ...prev,
+        city: data.city,
+        state: data.state,
+        address: data.street ? `${data.street} - ${data.neighborhood}` : prev.address,
+        zipCode: data.cep
+      }))
+      showToast('CEP encontrado com sucesso!')
+    } catch (error: any) {
+      showToast(error.message || 'Erro ao buscar CEP')
+    }
+  }
+
+  // Função para buscar dados por CNPJ
+  async function handleCnpjSearch(cnpj: string) {
+    try {
+      const data = await fetchCompanyByCnpj(cnpj)
+      setForm(prev => ({
+        ...prev,
+        name: data.fantasyName || data.name || prev.name,
+        city: data.city || prev.city,
+        state: data.state || prev.state,
+        address: data.street ? `${data.street}${data.number ? `, ${data.number}` : ''}` : prev.address,
+        phone: data.phone || prev.phone,
+        email: data.email || prev.email,
+        cnpj: data.cnpj || prev.cnpj,
+        zipCode: data.cep || prev.zipCode
+      }))
+      showToast('CNPJ encontrado com sucesso!')
+    } catch (error: any) {
+      showToast(error.message || 'Erro ao buscar CNPJ')
     }
   }
 
@@ -228,26 +267,95 @@ export default function AdminIgrejas() {
         }
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Input label="Nome da Igreja" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
+          <Input 
+            label="Nome da Igreja" 
+            value={form.name} 
+            onChange={e => setForm({ ...form, name: e.target.value })} 
+            required 
+          />
+
+          {/* CNPJ com busca automática */}
+          <div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input
+                  label="CNPJ"
+                  value={form.cnpj}
+                  onChange={e => {
+                    const value = e.target.value
+                    setForm({ ...form, cnpj: value })
+                    // Busca automática quando tiver 14 dígitos
+                    if (value.replace(/\D/g, '').length === 14) {
+                      handleCnpjSearch(value)
+                    }
+                  }}
+                  placeholder="00.000.000/0001-00"
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-6"
+                onClick={() => form.cnpj && handleCnpjSearch(form.cnpj)}
+                disabled={!form.cnpj || form.cnpj.replace(/\D/g, '').length !== 14}
+              >
+                Buscar CNPJ
+              </Button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <Input label="Cidade" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} />
             <Input label="UF" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} maxLength={2} placeholder="SP" />
           </div>
-          <Input label="Endereço" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
+
+          {/* CEP com busca automática */}
+          <div>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Input 
+                  label="CEP" 
+                  value={form.zipCode} 
+                  onChange={e => {
+                    const value = e.target.value
+                    setForm({ ...form, zipCode: value })
+                    // Busca automática quando tiver 8 dígitos
+                    if (value.replace(/\D/g, '').length === 8) {
+                      handleCepSearch(value)
+                    }
+                  }}
+                  placeholder="00000-000" 
+                />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-6"
+                onClick={() => form.zipCode && handleCepSearch(form.zipCode)}
+                disabled={!form.zipCode || form.zipCode.replace(/\D/g, '').length !== 8}
+              >
+                Buscar CEP
+              </Button>
+            </div>
+          </div>
+
+          <Input 
+            label="Endereço" 
+            value={form.address} 
+            onChange={e => setForm({ ...form, address: e.target.value })} 
+          />
+          
           <div className="grid grid-cols-2 gap-4">
-            <Input label="CEP" value={form.zipCode} onChange={e => setForm({ ...form, zipCode: e.target.value })} placeholder="00000-000" />
             <Input label="Telefone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
             <Input label="E-mail" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-            <Input label="CNPJ" value={form.cnpj} onChange={e => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0001-00" />
           </div>
+          
           <Select label="Status" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
             <option value="ACTIVE">Ativa</option>
             <option value="INACTIVE">Inativa</option>
           </Select>
 
-          {/* Upload de logo */}
+          {/* Upload de logo (mantido igual) */}
           <div>
             <p className="text-sm font-semibold text-brand-900 mb-2 flex items-center gap-1.5">
               <Upload className="h-3.5 w-3.5" /> Logo da Igreja

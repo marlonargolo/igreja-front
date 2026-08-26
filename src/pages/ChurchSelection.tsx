@@ -5,6 +5,9 @@ import { Badge } from '@/components/ui/Badge'
 import { useApp } from '@/lib/AppContext'
 import { churchesService, type Church } from '@/services/churches.service'
 import { useToast } from '@/components/ui/Extras'
+import { resolveLogoUrl } from '@/services/churches.service'
+import { http } from '@/lib/http'
+import type { ApiSuccess } from '@/types/api'
 
 const ADMIN_ROLES = ['ROOT', 'ADMIN']
 
@@ -18,18 +21,39 @@ export default function ChurchSelection() {
   const isAdmin = user?.roles?.some(r => ADMIN_ROLES.includes(r)) ?? false
 
   useEffect(() => {
-    churchesService.list({ page: 0, size: 50 })
-      .then(list => {
-        // ROOT/ADMIN vê todas; demais vêem apenas a sua
-        if (isAdmin) {
+    if (isAdmin) {
+      // ROOT/ADMIN vê todas as igrejas diretamente
+      churchesService.list()
+        .then(list => {
           setChurches(list)
-        } else {
-          // para perfis restritos, mostra apenas 1 (a da organização)
-          setChurches(list.slice(0, 1))
-        }
-      })
-      .catch(() => showToast('Falha ao carregar igrejas.'))
-      .finally(() => setLoading(false))
+          if (list.length === 1) {
+            const c = list[0]
+            setChurch({ id: String(c.id), name: c.name, city: c.city || '', state: c.state || '' })
+            navigate('/dashboard', { replace: true })
+          }
+        })
+        .catch(() => showToast('Falha ao carregar igrejas.'))
+        .finally(() => setLoading(false))
+    } else {
+      // Demais usuários: apenas igrejas vinculadas
+      http.get<any>('/churches/my')
+        .then(res => {
+          const raw = (res as any)
+          const list: Church[] = Array.isArray(raw?.data)
+            ? raw.data
+            : Array.isArray(raw?.data?.data)
+            ? raw.data.data
+            : raw?.data?.content || []
+          setChurches(list)
+          if (list.length === 1) {
+            const c = list[0]
+            setChurch({ id: String(c.id), name: c.name, city: c.city || '', state: c.state || '' })
+            navigate('/dashboard', { replace: true })
+          }
+        })
+        .catch(() => showToast('Falha ao carregar igrejas.'))
+        .finally(() => setLoading(false))
+    }
   }, [])
 
   function select(church: Church) {
@@ -53,9 +77,9 @@ export default function ChurchSelection() {
         </div>
         <div className="flex items-center gap-3">
           <img
-            src={`https://i.pravatar.cc/150?u=${user?.email || 'user'}`}
+            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(user?.name || 'U')}&background=1E3A5F&color=fff`}
             className="h-9 w-9 rounded-full object-cover"
-            alt=""
+            alt={user?.name || 'Usuário'}
           />
           <div className="hidden sm:block">
             <p className="text-sm font-semibold text-brand-900 leading-tight">{user?.name || 'Usuário'}</p>
@@ -99,7 +123,16 @@ export default function ChurchSelection() {
               >
                 <div className="h-36 w-full overflow-hidden bg-brand-50 flex items-center justify-center">
                   {church.logoUrl ? (
-                    <img src={church.logoUrl} alt={church.name} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <img 
+                        src={church.logoUrl 
+                          ? (church.logoUrl.startsWith('http') 
+                              ? church.logoUrl 
+                              : `http://2.24.80.229:3000${church.logoUrl}`) 
+                          : undefined
+                        } 
+                        alt={church.name} 
+                        className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" 
+                      />
                   ) : (
                     <Cloud className="h-12 w-12 text-brand-200" />
                   )}

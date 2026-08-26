@@ -147,16 +147,7 @@ export default function Login() {
               </div>
             ) : 'Entrar na plataforma'}
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full mt-3"
-            size="lg"
-            disabled={isLoading}
-            onClick={() => authService.loginWithGoogleWorkspace()}
-          >
-            <KeyRound className="h-4 w-4" /> Entrar com Google Workspace
-          </Button>
+          
         </form>
       </div>
     </div>

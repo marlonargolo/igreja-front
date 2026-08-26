@@ -53,28 +53,13 @@ export type CreateMemberPayload = {
 export type UpdateMemberPayload = Partial<CreateMemberPayload> & { status?: string }
 
 export const membersService = {
-  async list(params: MemberListParams = {}) {
-    // Buscar churchId do localStorage (do usuário logado)
-    const userStr = localStorage.getItem('user')
-    let churchId = params.churchId
-    if (!churchId && userStr) {
-      try {
-        const user = JSON.parse(userStr)
-        churchId = user.organization_id || user.organizationId
-      } catch {}
-    }
-    // Se ainda não tiver, usar fallback 1
-    if (!churchId) churchId = 1
-
-    const response = await http.get<ApiSuccess<{ data: Member[]; meta: any }>>('/members', {
-      page: params.page ?? 0,
-      size: params.size ?? 20,
-      churchId: churchId,                    // ← agora enviando
-      congregationId: params.congregationId,
-      status: params.status,
-      search: params.search,
+  async list(params: any = {}) {
+    const churchId = localStorage.getItem('igrejahub_selected_church_id')
+    const res = await http.get<ApiSuccess<any>>('/members', {
+      ...params,
+      churchId: params.churchId ?? (churchId ? Number(churchId) : undefined),
     })
-    return response.data
+    return res
   },
 
   async get(id: number) {

@@ -23,7 +23,7 @@ const GRUPOS_RELATORIO = [
 
 export default function RelatoriosSecretaria() {
   const showToast = useToast()
-  const { config } = useConfig()
+  const { local } = useConfig()
   const [grupo, setGrupo] = useState('aniversariantes')
   const [sub, setSub] = useState('')
   const [churchFilter, setChurchFilter] = useState('Todas')
@@ -46,11 +46,11 @@ export default function RelatoriosSecretaria() {
   // Sub-opções dinâmicas do ConfigContext
   const SUB: Record<string, string[]> = {
     aniversariantes: [],
-    membros:         ['Todos', ...config.statusMembros],
-    obreiros:        ['Todos os Cargos', ...config.cargos],
-    funcoes:         ['Todas as Funções', ...config.funcoes],
-    grupos:          ['Todos os Grupos', ...config.grupos],
-    ministerios:     ['Todos os Ministérios', ...config.ministerios],
+    membros:         ['Todos', ...local.statusMembros],
+    obreiros:        ['Todos os Cargos', ...local.cargos],
+    funcoes:         ['Todas as Funções', ...local.funcoes],
+    grupos:          ['Todos os Grupos', ...local.grupos],
+    ministerios:     ['Todos os Ministérios', ...local.ministerios],
     congregacoes:    [],
   }
 
@@ -117,7 +117,7 @@ export default function RelatoriosSecretaria() {
           data = data.filter(m => ((m as any).funcoes || '').includes(sub))
           titulo += ` — ${sub}`
         } else {
-          printSeparado(data, 'funcoes', titulo, config.funcoes)
+          printSeparado(data, 'funcoes', titulo, local.funcoes)
           return
         }
       }
@@ -137,7 +137,7 @@ export default function RelatoriosSecretaria() {
           data = data.filter(m => ((m as any).funcoes || (m as any).ministerio || '').includes(sub))
           titulo += ` — ${sub}`
         } else {
-          printSeparado(data, 'ministerio', titulo, config.ministerios)
+          printSeparado(data, 'ministerio', titulo, local.ministerios)
           return
         }
       }

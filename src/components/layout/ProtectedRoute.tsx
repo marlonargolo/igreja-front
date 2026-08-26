@@ -4,10 +4,7 @@ import { ReactNode } from 'react'
 import { useApp } from '@/lib/AppContext'
 
 export function ProtectedRoute({ children, requireChurch = false }: { children: ReactNode; requireChurch?: boolean }) {
-  const { church, loading } = useApp()
-  
-  // Verificar se o usuário está logado via localStorage/token
-  const isAuthenticated = !!localStorage.getItem('access_token') || !!localStorage.getItem('user')
+  const { user, church, loading } = useApp()
 
   if (loading) {
     return (
@@ -17,8 +14,12 @@ export function ProtectedRoute({ children, requireChurch = false }: { children: 
     )
   }
 
-  if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (requireChurch && !church) return <Navigate to="/selecionar-igreja" replace />
+  if (!user) return <Navigate to="/login" replace />
+
+  if (requireChurch && !church) {
+    // Redirecionar para seleção de igreja
+    return <Navigate to="/selecionar-igreja" replace />
+  }
 
   return <>{children}</>
 }

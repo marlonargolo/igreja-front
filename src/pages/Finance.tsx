@@ -14,6 +14,7 @@ import { financeService, type Transaction } from '@/services'
 import { http } from '@/lib/http'
 import type { ApiSuccess } from '@/types/api'
 import { useConfig } from '@/lib/ConfigContext'
+import { useApp } from '@/lib/AppContext'
 
 const CATEGORIAS_TRANSFERENCIA = [
   'Transferência entre Contas',
@@ -31,7 +32,7 @@ interface FinancialAccount {
 
 export default function Finance() {
   const showToast = useToast()
-  const { config } = useConfig()
+  const { contasECaixas } = useConfig()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
@@ -46,23 +47,25 @@ export default function Finance() {
     contaOrigemId: '',
     contaDestinoId: '',
   })
+  const { church } = useApp()
   
 
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
-    setLoading(true)
-    try {
-      const txRes = await financeService.list({ size: 100, type: 'EXPENSE' }) as any
-      const raw = txRes as any
-      const all = raw?.content || raw?.data || raw || []
-      setTransactions(all.filter((t: Transaction) => isTransfer(t)))
-    } catch {
-      showToast('Falha ao carregar transferências.')
-    } finally {
-      setLoading(false)
-    }
+  setLoading(true)
+  try {
+    const txRes = await financeService.list({ size: 100, type: 'EXPENSE' }) as any
+    const list = txRes?.data?.data || txRes?.data?.content || txRes?.data || txRes || []
+    const safeList = Array.isArray(list) ? list : []
+    setTransactions(safeList.filter((t: Transaction) => isTransfer(t)))
+  } catch {
+    showToast('Falha ao carregar transferências.')
+    setTransactions([])
+  } finally {
+    setLoading(false)
   }
+}
 
   function isTransfer(t: Transaction) {
     const cat = (t.categoryName || t.description || '').toLowerCase()
@@ -113,8 +116,8 @@ export default function Finance() {
     e.preventDefault()
     if (!form.amount) { showToast('Informe o valor.'); return }
 
-    const origemNome = accounts.find(a => String(a.id) === form.contaOrigemId)?.name || form.contaOrigemId
-    const destinoNome = accounts.find(a => String(a.id) === form.contaDestinoId)?.name || form.contaDestinoId
+    const origemNome = form.contaOrigemId || ''
+    const destinoNome = form.contaDestinoId || ''
     const desc = origemNome && destinoNome
       ? `${form.category}: ${origemNome} → ${destinoNome}${form.description ? ' — ' + form.description : ''}`
       : form.description || form.category
@@ -130,7 +133,7 @@ export default function Finance() {
         showToast('Transferência atualizada.')
       } else {
         await financeService.create({
-          churchId: 2,
+          churchId: church?.id ? Number(church.id) : undefined,
           type: 'EXPENSE',
           description: desc,
           amount: parseFloat(form.amount),
@@ -240,7 +243,7 @@ export default function Finance() {
               onChange={e => setForm({ ...form, contaOrigemId: e.target.value })}
             >
               <option value="">— Selecione —</option>
-              {config.contasECaixas.map(c => (
+              {contasECaixas.map(c => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </Select>
@@ -250,7 +253,7 @@ export default function Finance() {
               onChange={e => setForm({ ...form, contaDestinoId: e.target.value })}
             >
               <option value="">— Selecione —</option>
-              {config.contasECaixas
+              {contasECaixas
                 .filter(c => c !== form.contaOrigemId)
                 .map(c => (
                   <option key={c} value={c}>{c}</option>

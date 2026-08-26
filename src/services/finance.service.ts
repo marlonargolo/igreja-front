@@ -49,30 +49,13 @@ export type CreateTransactionPayload = {
 export type UpdateTransactionPayload = Partial<CreateTransactionPayload> & { status?: string }
 
 export const financeService = {
-  async list(params: TransactionListParams = {}) {
-    const response = await http.get<ApiSuccess<any>>('/finance/transactions', {
-      page: params.page ?? 0,
-      size: params.size ?? 20,
-      startDate: params.startDate,
-      endDate: params.endDate,
-      churchId: params.churchId,
-      congregationId: params.congregationId,
-      categoryId: params.categoryId,
-      type: params.type,
-      status: params.status,
-      search: params.search,
+  async list(params: any = {}) {
+    const churchId = localStorage.getItem('igrejahub_selected_church_id')
+    const res = await http.get<ApiSuccess<any>>('/finance/transactions', {
+      ...params,
+      churchId: params.churchId ?? (churchId ? Number(churchId) : undefined),
     })
-    // O backend retorna Spring Page: { content: [], totalElements: N, ... }
-    const raw = response.data
-    return {
-      data: raw?.content || raw?.data || [],
-      meta: {
-        total: raw?.totalElements ?? 0,
-        page: (raw?.pageable?.pageNumber ?? 0) + 1,
-        pageSize: raw?.size ?? 20,
-        totalPages: raw?.totalPages ?? 1,
-      }
-    }
+    return res
   },
 
   async get(id: number) {
