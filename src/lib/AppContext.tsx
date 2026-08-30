@@ -15,7 +15,10 @@ interface User {
   name: string
   email: string
   roles?: string[]
+  permissions?: string[]
   organizationName?: string
+  churchId?: number        // NOVO — vem do login response
+  congregationId?: number  // NOVO — vem do login response
   churches?: Church[]
 }
 
@@ -26,6 +29,8 @@ interface AppContextType {
   setChurch: (church: Church | null) => void
   loading: boolean
   logout: () => Promise<void>
+  isRoot: boolean
+  hasPermission: (permission: string) => boolean
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -54,24 +59,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const me = await authService.me()
         setUser(me)
 
+        // Tentar restaurar igreja salva
         const savedChurchId = localStorage.getItem('igrejahub_selected_church_id')
-        if (savedChurchId) {
-          const restored = me.churches?.find((c: any) => String(c.id) === savedChurchId)
-          if (restored) {
-            setChurchState({ id: String(restored.id), name: restored.name, city: restored.city || '', state: restored.state || '' })
-            setLoading(false)
-            return
-          }
-        }
 
+        // Buscar igrejas disponíveis — o backend aplica o isolamento correto:
+        //   ROOT → todas; outros → apenas a própria
         try {
           const res = await http.get<any>('/churches/my')
-          const raw = res.data
-          const list = Array.isArray(raw) ? raw : (raw?.data || raw?.content || [])
+          const raw = res?.data
+          const list = Array.isArray(raw?.data) ? raw.data
+                     : Array.isArray(raw)       ? raw
+                     : raw?.content             || []
+
           if (list.length === 1) {
+            // Usuário com acesso a uma única igreja: entra direto, sem tela de seleção
             const c = list[0]
             setChurchState({ id: String(c.id), name: c.name, city: c.city || '', state: c.state || '' })
+          } else if (list.length > 1 && savedChurchId) {
+            // ROOT com múltiplas igrejas: restaurar a última seleção
+            const found = list.find((c: any) => String(c.id) === savedChurchId)
+            if (found) {
+              setChurchState({ id: String(found.id), name: found.name, city: found.city || '', state: found.state || '' })
+            }
           }
+          // Caso list.length > 1 sem savedChurchId: vai para tela de seleção (church === null)
         } catch {}
 
       } catch {
@@ -92,8 +103,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     window.location.href = '/login'
   }
 
+  const isRoot = user?.roles?.includes('ROOT') ?? false
+
+  function hasPermission(permission: string): boolean {
+    if (isRoot) return true
+    return user?.permissions?.includes(permission) ?? false
+  }
+
   return (
-    <AppContext.Provider value={{ user, setUser, church, setChurch: setChurchState, loading, logout }}>
+    <AppContext.Provider value={{
+      user, setUser,
+      church, setChurch: setChurchState,
+      loading, logout,
+      isRoot, hasPermission,
+    }}>
       {children}
     </AppContext.Provider>
   )

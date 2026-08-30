@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/Badge'
 import { useToast } from '@/components/ui/Extras'
 import { useApp } from '@/lib/AppContext'
 import { membersService, type Member } from '@/services'
+import type { ApiSuccess } from '@/types/api'
+import { resolveLogoUrl } from '@/services/churches.service'
 
 export default function Credenciais() {
   const showToast = useToast()
@@ -58,7 +60,7 @@ export default function Credenciais() {
           <p>Credencial de Membro</p>
         </div>
         <div class="body">
-          <img src="${m.avatarUrl || 'https://i.pravatar.cc/150?u=' + m.email}" />
+                  <img class="avatar" src="${resolveLogoUrl(m.avatarUrl) || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1E3A5F&color=fff`}" />
           <div class="info">
             <h3>${m.name}</h3>
             <p><strong>Cargo:</strong> ${(m as any).cargo || '—'}</p>
@@ -133,7 +135,11 @@ export default function Credenciais() {
                     onChange={() => toggle(m.id)}
                     className="h-4 w-4 rounded border-brand-200"
                   />
-                  <img src={m.avatarUrl || 'https://i.pravatar.cc/150?u=' + m.email} className="h-9 w-9 rounded-full object-cover" alt="" />
+                  <img 
+                    className="h-10 w-10 rounded-full object-cover" 
+                    src={resolveLogoUrl(m.avatarUrl) || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1E3A5F&color=fff`} 
+                    alt={m.name}
+                  />
                   <div className="flex-1">
                     <p className="font-semibold text-brand-900">{m.name}</p>
                     <p className="text-xs text-brand-300">{(m as any).cargo || 'Membro'}</p>
