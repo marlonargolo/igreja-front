@@ -1,3 +1,11 @@
+/**
+ * SecretariaTransferencias.tsx — Corrigido
+ *
+ * ISOLAMENTO:
+ * - Membros: backend filtra pela Igreja do usuário automaticamente (sem churchId no request)
+ * - Congregações destino: usa congregationsService (não churchesService)
+ *   → backend retorna APENAS congregações da Igreja do usuário
+ */
 import { useState, useEffect } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
@@ -7,15 +15,15 @@ import { Select, Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Extras'
 import { membersService } from '@/services'
-import { churchesService, type Church } from '@/services/churches.service'
+import { congregationsService, type Congregation } from '@/services/congregations.service'
 
 export default function SecretariaTransferencias() {
   const showToast = useToast()
-  const [members, setMembers] = useState<any[]>([])
-  const [churches, setChurches] = useState<Church[]>([])
-  const [loading, setLoading] = useState(true)
-  const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [members, setMembers]         = useState<any[]>([])
+  const [congregations, setCongregations] = useState<Congregation[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [open, setOpen]               = useState(false)
+  const [saving, setSaving]           = useState(false)
   const [form, setForm] = useState({
     memberId: '',
     congregacaoDestino: '',
@@ -25,13 +33,18 @@ export default function SecretariaTransferencias() {
 
   useEffect(() => {
     Promise.all([
+      // membersService.list() — backend aplica filtro de Igreja automaticamente
       membersService.list({ size: 200 }),
-      churchesService.list(),
-    ]).then(([mRes, cList]) => {
-      const raw = mRes as any
-      const list = raw?.data?.data || raw?.data?.content || raw?.data || []
-      setMembers(Array.isArray(list) ? list : [])
-      setChurches(cList)
+      // congregationsService.list() — backend retorna APENAS as da Igreja do usuário
+      congregationsService.list({ page: 0, size: 200 }),
+    ]).then(([mRes, cRes]) => {
+      const mRaw = mRes as any
+      const mList = mRaw?.data?.data || mRaw?.data?.content || mRaw?.data || []
+      setMembers(Array.isArray(mList) ? mList : [])
+
+      const cRaw = (cRes as any)?.data
+      const cList = cRaw?.data?.data || cRaw?.data || cRaw?.content || []
+      setCongregations(Array.isArray(cList) ? cList : [])
     }).catch(() => {
       showToast('Falha ao carregar dados.')
       setMembers([])
@@ -45,6 +58,7 @@ export default function SecretariaTransferencias() {
       return
     }
     setSaving(true)
+    // TODO: chamar endpoint de transferência quando implementado no backend
     await new Promise(r => setTimeout(r, 800))
     showToast('Transferência registrada com sucesso.')
     setOpen(false)
@@ -118,7 +132,7 @@ export default function SecretariaTransferencias() {
             onChange={e => setForm({ ...form, congregacaoDestino: e.target.value })}
           >
             <option value="">— Selecione a congregação destino —</option>
-            {churches.map(c => (
+            {congregations.map(c => (
               <option key={c.id} value={String(c.id)}>{c.name}</option>
             ))}
           </Select>

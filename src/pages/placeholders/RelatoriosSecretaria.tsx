@@ -1,3 +1,12 @@
+/**
+ * RelatoriosSecretaria.tsx — Corrigido
+ *
+ * ISOLAMENTO:
+ * - Membros: backend filtra pela Igreja do usuário automaticamente
+ * - Filtro de congregação: usa congregationsService (não churchesService)
+ *   → exibe APENAS congregações da Igreja do usuário
+ * - Relatório de Congregações: usa congregationsService
+ */
 import { useState, useEffect } from 'react'
 import { Download } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
@@ -7,7 +16,7 @@ import { Select } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Extras'
 import { useConfig } from '@/lib/ConfigContext'
 import { membersService, type Member } from '@/services'
-import { churchesService, type Church } from '@/services/churches.service'
+import { congregationsService, type Congregation } from '@/services/congregations.service'
 
 const MESES = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
 
@@ -24,26 +33,30 @@ const GRUPOS_RELATORIO = [
 export default function RelatoriosSecretaria() {
   const showToast = useToast()
   const { local } = useConfig()
-  const [grupo, setGrupo] = useState('aniversariantes')
-  const [sub, setSub] = useState('')
-  const [churchFilter, setChurchFilter] = useState('Todas')
-  const [mes, setMes] = useState(String(new Date().getMonth() + 1).padStart(2, '0'))
+  const [grupo, setGrupo]           = useState('aniversariantes')
+  const [sub, setSub]               = useState('')
+  const [congFilter, setCongFilter] = useState('Todas')
+  const [mes, setMes]               = useState(String(new Date().getMonth() + 1).padStart(2, '0'))
   const [generating, setGenerating] = useState(false)
-  const [members, setMembers] = useState<Member[]>([])
-  const [churches, setChurches] = useState<Church[]>([])
+  const [members, setMembers]             = useState<Member[]>([])
+  const [congregations, setCongregations] = useState<Congregation[]>([])
 
   useEffect(() => {
     Promise.all([
+      // Backend filtra pela Igreja do usuário — sem churchId manual
       membersService.list({ size: 500 }) as any,
-      churchesService.list(),
-    ]).then(([mRes, cList]) => {
-      const raw = mRes as any
-      setMembers(raw?.data || raw?.content || [])
-      setChurches(cList)
+      // congregationsService — só congregações da Igreja do usuário
+      congregationsService.list({ page: 0, size: 200 }),
+    ]).then(([mRes, cRes]) => {
+      const mRaw = mRes as any
+      setMembers(mRaw?.data?.data || mRaw?.data || mRaw?.content || [])
+      const cRaw = (cRes as any)?.data
+      const cList = cRaw?.data?.data || cRaw?.data || cRaw?.content || []
+      setCongregations(Array.isArray(cList) ? cList : [])
     }).catch(() => showToast('Falha ao carregar dados.'))
   }, [])
 
-  // Sub-opções dinâmicas do ConfigContext
+  // Sub-opções dinâmicas do ConfigContext (isolado por Igreja via lsKey)
   const SUB: Record<string, string[]> = {
     aniversariantes: [],
     membros:         ['Todos', ...local.statusMembros],
@@ -54,7 +67,6 @@ export default function RelatoriosSecretaria() {
     congregacoes:    [],
   }
 
-  // Reset sub ao trocar grupo
   function selectGrupo(k: string) {
     setGrupo(k)
     const opts = SUB[k]
@@ -63,9 +75,16 @@ export default function RelatoriosSecretaria() {
 
   const subOptions = SUB[grupo] || []
 
-  const byChurch = churchFilter === 'Todas'
+  // Filtro de congregação aplicado CLIENT-SIDE só para apresentação
+  // (o backend já entregou apenas membros da Igreja correta)
+  const byCongreg = congFilter === 'Todas'
     ? members
-    : members.filter(m => String((m as any).churchId) === churchFilter)
+    : members.filter(m => String((m as any).congregationId) === congFilter)
+
+  function congLabel() {
+    if (congFilter === 'Todas') return 'Todas as Congregações'
+    return congregations.find(c => String(c.id) === congFilter)?.name || ''
+  }
 
   function statusToFilter(s: string): string {
     const lower = s.toLowerCase()
@@ -78,9 +97,9 @@ export default function RelatoriosSecretaria() {
   async function generate() {
     setGenerating(true)
     try {
-      if (grupo === 'congregacoes') { printCongregacoes(churches); return }
+      if (grupo === 'congregacoes') { printCongregacoes(congregations); return }
 
-      let data: Member[] = byChurch
+      let data: Member[] = byCongreg
       let titulo = GRUPOS_RELATORIO.find(g => g.key === grupo)?.label || ''
 
       if (grupo === 'aniversariantes') {
@@ -89,56 +108,39 @@ export default function RelatoriosSecretaria() {
           if (!m.birthDate) return false
           return String(new Date(m.birthDate).getMonth() + 1).padStart(2, '0') === mes
         })
-      }
-
-      else if (grupo === 'membros') {
+      } else if (grupo === 'membros') {
         if (sub && sub !== 'Todos') {
-          const filterStatus = statusToFilter(sub)
-          data = data.filter(m =>
-            m.status === filterStatus ||
-            m.status?.toLowerCase() === sub.toLowerCase()
-          )
+          const fs = statusToFilter(sub)
+          data = data.filter(m => m.status === fs || m.status?.toLowerCase() === sub.toLowerCase())
           titulo += ` — ${sub}`
         }
-      }
-
-      else if (grupo === 'obreiros') {
+      } else if (grupo === 'obreiros') {
         if (sub !== 'Todos os Cargos' && sub) {
           data = data.filter(m => ((m as any).cargo || '').includes(sub))
           titulo += ` — ${sub}`
         } else {
-          printSeparado(data, 'cargo', titulo, config.cargos)
-          return
+          printSeparado(data, 'cargo', titulo, local.cargos); return
         }
-      }
-
-      else if (grupo === 'funcoes') {
+      } else if (grupo === 'funcoes') {
         if (sub !== 'Todas as Funções' && sub) {
           data = data.filter(m => ((m as any).funcoes || '').includes(sub))
           titulo += ` — ${sub}`
         } else {
-          printSeparado(data, 'funcoes', titulo, local.funcoes)
-          return
+          printSeparado(data, 'funcoes', titulo, local.funcoes); return
         }
-      }
-
-      else if (grupo === 'grupos') {
+      } else if (grupo === 'grupos') {
         if (sub !== 'Todos os Grupos' && sub) {
           data = data.filter(m => ((m as any).funcoes || (m as any).grupo || '').includes(sub))
           titulo += ` — ${sub}`
         } else {
-          printSeparado(data, 'grupo', titulo, config.grupos)
-          return
+          printSeparado(data, 'grupo', titulo, local.grupos); return
         }
-      }
-
-      else if (grupo === 'ministerios') {
+      } else if (grupo === 'ministerios') {
         if (sub !== 'Todos os Ministérios' && sub) {
           data = data.filter(m => ((m as any).funcoes || (m as any).ministerio || '').includes(sub))
           titulo += ` — ${sub}`
         } else {
-          printSeparado(data, 'ministerio', titulo, local.ministerios)
-          return
+          printSeparado(data, 'ministerio', titulo, local.ministerios); return
         }
       }
 
@@ -148,11 +150,6 @@ export default function RelatoriosSecretaria() {
     } finally {
       setGenerating(false)
     }
-  }
-
-  function churchLabel() {
-    if (churchFilter === 'Todas') return 'Todas as Congregações'
-    return churches.find(c => String(c.id) === churchFilter)?.name || ''
   }
 
   function printReport(data: Member[], titulo: string) {
@@ -173,7 +170,7 @@ export default function RelatoriosSecretaria() {
     td{padding:7px 8px;border-bottom:1px solid #eee;font-size:11px}
     tr:nth-child(even) td{background:#f9f9f9}</style></head><body>
     <h1>${titulo}</h1>
-    <p class="sub">Congregação: ${churchLabel()} | Gerado em ${new Date().toLocaleString('pt-BR')} | Total: ${data.length}</p>
+    <p class="sub">Congregação: ${congLabel()} | Gerado em ${new Date().toLocaleString('pt-BR')} | Total: ${data.length}</p>
     <table><thead><tr><th>Nome</th><th>E-mail</th><th>Telefone</th><th>Cargo</th><th>Funções</th><th>Status</th><th>Nascimento</th></tr></thead>
     <tbody>${rows}</tbody></table></body></html>`)
     win.document.close()
@@ -206,18 +203,18 @@ export default function RelatoriosSecretaria() {
     win.document.write(`<html><head><title>${titulo}</title>
     <style>body{font-family:Arial;padding:20px}h1{font-size:16px;color:#1E3A5F}</style></head>
     <body><h1>${titulo}</h1>
-    <p style="color:#666;font-size:11px;margin-bottom:16px">Congregação: ${churchLabel()} | ${new Date().toLocaleString('pt-BR')}</p>
+    <p style="color:#666;font-size:11px;margin-bottom:16px">Congregação: ${congLabel()} | ${new Date().toLocaleString('pt-BR')}</p>
     ${html||'<p style="color:#666">Nenhum registro encontrado.</p>'}</body></html>`)
     win.document.close()
     setTimeout(() => win.print(), 400)
   }
 
-  function printCongregacoes(list: Church[]) {
+  function printCongregacoes(list: Congregation[]) {
     const win = window.open('', '_blank')
     if (!win) return
     const rows = list.map(c => `<tr>
       <td>${c.name}</td><td>${[c.city,c.state].filter(Boolean).join(', ')||'—'}</td>
-      <td>${c.email||'—'}</td><td>${c.phone||'—'}</td><td>${c.cnpj||'—'}</td>
+      <td>${(c as any).email||'—'}</td><td>${(c as any).phone||'—'}</td>
       <td>${c.status==='ACTIVE'?'Ativa':'Inativa'}</td></tr>`).join('')
     win.document.write(`<html><head><title>Congregações</title>
     <style>body{font-family:Arial;font-size:12px;padding:20px}
@@ -228,7 +225,7 @@ export default function RelatoriosSecretaria() {
     tr:nth-child(even) td{background:#f9f9f9}</style></head><body>
     <h1>Relatório de Congregações</h1>
     <p style="color:#666;font-size:11px;margin-bottom:16px">Gerado em ${new Date().toLocaleString('pt-BR')} — Total: ${list.length}</p>
-    <table><thead><tr><th>Nome</th><th>Cidade/UF</th><th>E-mail</th><th>Telefone</th><th>CNPJ</th><th>Status</th></tr></thead>
+    <table><thead><tr><th>Nome</th><th>Cidade/UF</th><th>E-mail</th><th>Telefone</th><th>Status</th></tr></thead>
     <tbody>${rows}</tbody></table></body></html>`)
     win.document.close()
     setTimeout(() => win.print(), 400)
@@ -237,12 +234,12 @@ export default function RelatoriosSecretaria() {
   return (
     <Layout crumbs={[{ label: 'Secretaria' }, { label: 'Relatórios' }]} title="Relatórios — Secretaria">
 
-      {/* Aniversariantes em destaque no topo */}
+      {/* Aniversariantes em destaque */}
       <Card className="mb-6 border-2 border-brand-200 bg-brand-50/50">
         <CardBody className="pt-5 flex flex-col sm:flex-row sm:items-end gap-4">
           <div className="flex-1">
             <p className="font-bold text-brand-900 mb-1">🎂 Aniversariantes do Mês</p>
-            <p className="text-sm text-brand-400">Gera lista de membros aniversariantes no mês selecionado.</p>
+            <p className="text-sm text-brand-400">Lista de membros aniversariantes no mês selecionado.</p>
           </div>
           <div className="flex items-end gap-3">
             <Select label="Mês" value={mes} onChange={e => setMes(e.target.value)}>
@@ -257,11 +254,13 @@ export default function RelatoriosSecretaria() {
         </CardBody>
       </Card>
 
-      {/* Filtro de congregação */}
+      {/* Filtro de congregação — apenas congregações da Igreja do usuário */}
       <Card className="mb-4 p-4">
-        <Select label="Congregação" value={churchFilter} onChange={e => setChurchFilter(e.target.value)}>
+        <Select label="Congregação" value={congFilter} onChange={e => setCongFilter(e.target.value)}>
           <option value="Todas">Todas as Congregações</option>
-          {churches.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+          {congregations.map(c => (
+            <option key={c.id} value={String(c.id)}>{c.name}</option>
+          ))}
         </Select>
       </Card>
 
@@ -310,7 +309,7 @@ export default function RelatoriosSecretaria() {
             <Download className="h-4 w-4" />
             {generating ? 'Gerando...' : 'Gerar e Imprimir'}
           </Button>
-          <p className="text-xs text-brand-300">{churchLabel()}</p>
+          <p className="text-xs text-brand-300">{congLabel()}</p>
         </CardBody>
       </Card>
     </Layout>

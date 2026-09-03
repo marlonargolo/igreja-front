@@ -1,5 +1,15 @@
+/**
+ * CongregarcoesPage.tsx — /configuracoes/congregacoes
+ *
+ * CORRIGIDO:
+ * - Usa congregationsService (não churchesService)
+ * - Cria via POST /congregations (não POST /churches)
+ * - Backend filtra automaticamente pela Igreja do usuário logado
+ * - Igrejas NÃO aparecem aqui em hipótese alguma
+ * - Criação: churchId preenchido automaticamente pelo backend (Igreja do criador)
+ */
 import { useEffect, useState } from 'react'
-import { Plus, MapPin, Phone, Mail, ArrowRight, Upload, X } from 'lucide-react'
+import { Plus, MapPin, Phone, Mail, Edit2, Trash2, Upload, X } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -8,86 +18,67 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Extras'
 import { useApp } from '@/lib/AppContext'
-import { useNavigate } from 'react-router-dom'
-import { churchesService, type Church } from '@/services/churches.service'
-import { fetchAddressByCep, fetchCompanyByCnpj } from '@/services/externalApis.service'
+import { congregationsService, type Congregation } from '@/services/congregations.service'
+import { fetchAddressByCep } from '@/services/externalApis.service'
 
-const ADMIN_ROLES = ['ROOT', 'ADMIN', 'PASTOR_PRINCIPAL']
-
-// URL base para servir arquivos do backend
 const FILES_BASE = 'http://2.24.80.229:3000'
 
-function churchLogoUrl(logoUrl?: string): string | undefined {
-  if (!logoUrl) return undefined
-  if (logoUrl.startsWith('http') || logoUrl.startsWith('blob:')) return logoUrl
-  return `${FILES_BASE}${logoUrl}`
+function resolveImg(url?: string | null): string | undefined {
+  if (!url) return undefined
+  if (url.startsWith('http') || url.startsWith('blob:')) return url
+  return `${FILES_BASE}${url}`
 }
 
 export default function CongregarcoesPage() {
   const showToast = useToast()
-  const navigate = useNavigate()
-  const { user, church, setChurch } = useApp()
-  const [churches, setChurches] = useState<Church[]>([])
+  const { user, church, hasPermission, isRoot } = useApp()
+
+  const canManage = isRoot || hasPermission('SETTINGS_UPDATE')
+
+  const [congregations, setCongregations] = useState<Congregation[]>([])
   const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState<Church | null>(null)
-  const [openNew, setOpenNew] = useState(false)
-  const [saving, setSaving] = useState(false)
+
+  // Modal criar/editar
+  const [openNew, setOpenNew]   = useState(false)
+  const [editing, setEditing]   = useState<Congregation | null>(null)
+  const [saving, setSaving]     = useState(false)
   const [logoFile, setLogoFile] = useState<File | null>(null)
   const [logoPreview, setLogoPreview] = useState<string | null>(null)
+
   const [form, setForm] = useState({
     name: '', city: '', state: '', address: '',
-    phone: '', email: '', cnpj: '', cep: '' // Adicione cep aqui
+    phone: '', email: '', cep: '',
   })
 
-  const isAdmin = user?.roles?.some(r => ADMIN_ROLES.includes(r)) ?? false
-
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [church?.id])
 
   async function load() {
+    setLoading(true)
     try {
-      const list = await churchesService.list()
-      setChurches(list)
+      // Backend filtra automaticamente pela Igreja do usuário — não passar churchId aqui
+      // para não vazar o ID para um usuário mal-intencionado interceptar a URL
+      const res = await congregationsService.list({ page: 0, size: 200 })
+      const raw = (res as any)?.data
+      const list = raw?.data || raw?.content || raw || []
+      setCongregations(Array.isArray(list) ? list : [])
     } catch {
       showToast('Falha ao carregar congregações.')
+      setCongregations([])
     } finally {
       setLoading(false)
     }
   }
-  // Função para buscar endereço por CEP
+
   async function handleCepSearch(cep: string) {
     try {
       const data = await fetchAddressByCep(cep)
       setForm(prev => ({
         ...prev,
-        city: data.city,
-        state: data.state,
+        city: data.city, state: data.state, cep: data.cep,
         address: data.street ? `${data.street}${data.neighborhood ? ` - ${data.neighborhood}` : ''}` : prev.address,
-        cep: data.cep
       }))
-      showToast('CEP encontrado com sucesso!')
-    } catch (error: any) {
-      showToast(error.message || 'Erro ao buscar CEP')
-    }
-  }
-
-  // Função para buscar dados por CNPJ
-  async function handleCnpjSearch(cnpj: string) {
-    try {
-      const data = await fetchCompanyByCnpj(cnpj)
-      setForm(prev => ({
-        ...prev,
-        name: data.fantasyName || data.name || prev.name,
-        city: data.city || prev.city,
-        state: data.state || prev.state,
-        address: data.street ? `${data.street}${data.number ? `, ${data.number}` : ''}` : prev.address,
-        phone: data.phone || prev.phone,
-        email: data.email || prev.email,
-        cnpj: data.cnpj || prev.cnpj
-      }))
-      showToast('CNPJ encontrado com sucesso!')
-    } catch (error: any) {
-      showToast(error.message || 'Erro ao buscar CNPJ')
-    }
+      showToast('CEP encontrado!')
+    } catch (err: any) { showToast(err.message || 'Erro ao buscar CEP') }
   }
 
   function handleLogoChange(file: File | null) {
@@ -101,268 +92,174 @@ export default function CongregarcoesPage() {
     }
   }
 
-  function handleCardClick(c: Church) {
-    if (!isAdmin) {
-      showToast('Sem permissão para alterar a congregação ativa.')
-      return
-    }
-    setSelected(c)
+  function openCreate() {
+    setEditing(null)
+    setForm({ name: '', city: '', state: '', address: '', phone: '', email: '', cep: '' })
+    setLogoFile(null); setLogoPreview(null)
+    setOpenNew(true)
   }
 
-  function switchContext(c: Church) {
-    setChurch({ id: String(c.id), name: c.name, city: c.city || '', state: c.state || '' })
-    showToast(`Contexto alterado para: ${c.name}`)
-    setSelected(null)
-    navigate('/dashboard')
+  function openEdit(c: Congregation) {
+    setEditing(c)
+    setForm({ name: c.name, city: c.city || '', state: c.state || '',
+      address: c.address || '', phone: '', email: '', cep: '' })
+    setLogoFile(null)
+    setLogoPreview(resolveImg(c.imageUrl) || null)
+    setOpenNew(true)
   }
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.name) { showToast('Nome é obrigatório.'); return }
     setSaving(true)
     try {
-      // 1. Criar a congregação
-      const created = await churchesService.create({ ...form, status: 'ACTIVE' })
-
-      // 2. Se houver logo selecionada, fazer upload
-      if (logoFile && created?.id) {
-        try {
-          const logoUrl = await churchesService.uploadLogo(created.id, logoFile)
-          showToast('Congregação cadastrada com logo.')
-        } catch {
-          showToast('Congregação cadastrada, mas falha no upload da logo.')
-        }
+      if (editing) {
+        await congregationsService.update(editing.id, {
+          name: form.name, city: form.city, state: form.state, address: form.address,
+        })
+        showToast('Congregação atualizada.')
       } else {
-        showToast('Congregação cadastrada com sucesso.')
+        // churchId NÃO é enviado — o backend usa o churchId do usuário logado automaticamente
+        // Exceção: ROOT pode informar via campo churchId no payload, mas aqui usamos a Igreja atual
+        const payload: any = {
+          name: form.name, city: form.city || undefined, state: form.state || undefined,
+          address: form.address || undefined,
+          // Para ROOT: passa o churchId da Igreja selecionada no contexto
+          churchId: church?.id ? Number(church.id) : undefined,
+        }
+        const created = await congregationsService.create(payload) as any
+        showToast('Congregação cadastrada.')
       }
-
       setOpenNew(false)
-      setForm({ name: '', city: '', state: '', address: '', phone: '', email: '', cnpj: '' })
-      setLogoFile(null)
-      setLogoPreview(null)
       load()
     } catch (err: any) {
-      showToast(err?.message || 'Falha ao cadastrar.')
-    } finally {
-      setSaving(false)
-    }
+      showToast(err?.response?.data?.message || err?.message || 'Falha ao salvar.')
+    } finally { setSaving(false) }
   }
 
-
-
-  const visible = isAdmin ? churches : churches.filter(c => String(c.id) === String(church?.id))
+  async function handleDelete(c: Congregation) {
+    if (!confirm(`Desativar a congregação "${c.name}"?`)) return
+    try {
+      await congregationsService.remove(c.id)
+      showToast(`${c.name} desativada.`)
+      load()
+    } catch { showToast('Falha ao desativar.') }
+  }
 
   return (
     <Layout
       crumbs={[{ label: 'Configurações' }, { label: 'Congregações' }]}
-      title="Congregações"
-      action={isAdmin ? {
+      title={`Congregações${church?.name ? ` — ${church.name}` : ''}`}
+      action={canManage ? {
         label: 'Nova Congregação',
         icon: <Plus className="h-4 w-4" />,
-        onClick: () => setOpenNew(true),
+        onClick: openCreate,
       } : undefined}
     >
       {loading ? (
         <div className="flex justify-center py-20 text-brand-300">Carregando...</div>
-      ) : visible.length === 0 ? (
-        <div className="flex justify-center py-20 text-brand-300">Nenhuma congregação disponível.</div>
+      ) : congregations.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-20 gap-2 text-brand-300">
+          <p>Nenhuma congregação cadastrada.</p>
+          {canManage && (
+            <p className="text-sm">Clique em "Nova Congregação" para adicionar.</p>
+          )}
+        </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {visible.map(c => {
-            const logo = churchLogoUrl(c.logoUrl)
+          {congregations.map(c => {
+            const img = resolveImg(c.imageUrl)
             return (
-              <button key={c.id} onClick={() => handleCardClick(c)} className="text-left">
-                <Card className={`h-full transition-all ${isAdmin ? 'hover:shadow-soft hover:-translate-y-0.5 cursor-pointer' : 'cursor-default'}`}>
-                  {logo ? (
-                    <img src={logo} alt={c.name} className="h-28 w-full object-cover rounded-t-2xl" />
-                  ) : (
-                    <div className="h-28 w-full bg-brand-50 rounded-t-2xl flex items-center justify-center">
-                      <span className="text-4xl font-extrabold text-brand-200">
-                        {c.name.charAt(0).toUpperCase()}
-                      </span>
+              <Card key={c.id} className="h-full">
+                {img ? (
+                  <img src={img} alt={c.name} className="h-28 w-full object-cover rounded-t-2xl" />
+                ) : (
+                  <div className="h-28 w-full bg-brand-50 rounded-t-2xl flex items-center justify-center">
+                    <span className="text-4xl font-extrabold text-brand-200">
+                      {c.name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                )}
+                <CardBody className="pt-4">
+                  <div className="flex items-start justify-between mb-2">
+                    <p className="font-bold text-brand-900">{c.name}</p>
+                    <Badge tone={c.status === 'ACTIVE' ? 'green' : 'gray'}>
+                      {c.status === 'ACTIVE' ? 'Ativa' : 'Inativa'}
+                    </Badge>
+                  </div>
+                  {(c.city || c.state) && (
+                    <p className="text-sm text-brand-300 flex items-center gap-1 mb-1">
+                      <MapPin className="h-3.5 w-3.5" />
+                      {[c.city, c.state].filter(Boolean).join(', ')}
+                    </p>
+                  )}
+                  {canManage && (
+                    <div className="flex gap-2 mt-3 pt-3 border-t border-brand-100">
+                      <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
+                        <Edit2 className="h-3.5 w-3.5" /> Editar
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => handleDelete(c)}>
+                        <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                      </Button>
                     </div>
                   )}
-                  <CardBody className="pt-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <p className="font-bold text-brand-900">{c.name}</p>
-                      <Badge tone={c.status === 'ACTIVE' ? 'green' : 'gray'}>
-                        {c.status === 'ACTIVE' ? 'Ativa' : 'Inativa'}
-                      </Badge>
-                    </div>
-                    {(c.city || c.state) && (
-                      <p className="text-sm text-brand-300 flex items-center gap-1 mb-1">
-                        <MapPin className="h-3.5 w-3.5" />
-                        {[c.city, c.state].filter(Boolean).join(', ')}
-                      </p>
-                    )}
-                    {c.phone && <p className="text-xs text-brand-300 flex items-center gap-1"><Phone className="h-3 w-3" /> {c.phone}</p>}
-                    {c.email && <p className="text-xs text-brand-300 flex items-center gap-1"><Mail className="h-3 w-3" /> {c.email}</p>}
-                    {isAdmin && (
-                      <p className="text-xs text-brand-500 mt-3 font-medium flex items-center gap-1">
-                        <ArrowRight className="h-3.5 w-3.5" /> Clique para acessar
-                      </p>
-                    )}
-                  </CardBody>
-                </Card>
-              </button>
+                </CardBody>
+              </Card>
             )
           })}
         </div>
       )}
 
-      {/* Modal detalhe */}
-      {selected && (
-        <Modal
-          open={!!selected}
-          onClose={() => setSelected(null)}
-          title={selected.name}
-          footer={
-            <>
-              <Button variant="outline" onClick={() => setSelected(null)}>Fechar</Button>
-              <Button onClick={() => switchContext(selected)}>
-                <ArrowRight className="h-4 w-4" /> Acessar esta congregação
-              </Button>
-            </>
-          }
-        >
-          <div className="space-y-3 text-sm">
-            {churchLogoUrl(selected.logoUrl) && (
-              <img src={churchLogoUrl(selected.logoUrl)} alt={selected.name} className="h-32 w-full object-cover rounded-xl mb-4" />
-            )}
-            {[
-              ['Cidade / Estado', [selected.city, selected.state].filter(Boolean).join(' / ') || '—'],
-              ['Endereço', selected.address || '—'],
-              ['Telefone', selected.phone || '—'],
-              ['E-mail', selected.email || '—'],
-              ['CNPJ', selected.cnpj || '—'],
-              ['Status', selected.status === 'ACTIVE' ? 'Ativa' : 'Inativa'],
-            ].map(([l, v]) => (
-              <div key={l} className="flex gap-2">
-                <span className="font-semibold text-brand-900 w-32 shrink-0">{l}:</span>
-                <span className="text-brand-500">{v}</span>
-              </div>
-            ))}
-          </div>
-        </Modal>
-      )}
-
-      {/* Modal nova congregação */}
-      <Modal
-        open={openNew}
-        onClose={() => { 
-          setOpenNew(false); 
-          setLogoFile(null); 
-          setLogoPreview(null);
-          setForm(prev => ({ ...prev, cep: '' }));
-        }}
-        title="Nova Congregação"
+      {/* Modal criar/editar */}
+      <Modal open={openNew} onClose={() => { setOpenNew(false); setLogoFile(null); setLogoPreview(null) }}
+        title={editing ? `Editar: ${editing.name}` : 'Nova Congregação'}
         footer={
           <>
             <Button variant="outline" onClick={() => setOpenNew(false)}>Cancelar</Button>
-            <Button onClick={handleCreate} disabled={saving}>
-              {saving ? 'Salvando...' : 'Cadastrar'}
+            <Button onClick={handleSubmit} disabled={saving}>
+              {saving ? 'Salvando...' : editing ? 'Salvar' : 'Cadastrar'}
             </Button>
           </>
         }
       >
-        <form onSubmit={handleCreate} className="space-y-4">
-          <Input
-            label="Nome da Congregação"
-            value={form.name}
-            onChange={e => setForm({ ...form, name: e.target.value })}
-            required
-          />
-          
-          {/* CNPJ com busca automática */}
-          <div>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <Input
-                  label="CNPJ"
-                  value={form.cnpj}
-                  onChange={e => {
-                    const value = e.target.value
-                    setForm({ ...form, cnpj: value })
-                    // Busca automática quando tiver 14 dígitos
-                    if (value.replace(/\D/g, '').length === 14) {
-                      handleCnpjSearch(value)
-                    }
-                  }}
-                  placeholder="00.000.000/0001-00"
-                />
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-6"
-                onClick={() => form.cnpj && handleCnpjSearch(form.cnpj)}
-                disabled={!form.cnpj || form.cnpj.replace(/\D/g, '').length !== 14}
-              >
-                Buscar
-              </Button>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input label="Nome da Congregação" value={form.name}
+            onChange={e => setForm({ ...form, name: e.target.value })} required />
+
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Input label="CEP" value={form.cep}
+                onChange={e => {
+                  const v = e.target.value
+                  setForm({ ...form, cep: v })
+                  if (v.replace(/\D/g, '').length === 8) handleCepSearch(v)
+                }}
+                placeholder="00000-000" />
             </div>
+            <Button type="button" variant="outline" className="mt-6"
+              onClick={() => form.cep && handleCepSearch(form.cep)}
+              disabled={form.cep.replace(/\D/g, '').length !== 8}>
+              Buscar CEP
+            </Button>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <Input label="Cidade" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} />
-            <Input label="UF" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} maxLength={2} placeholder="SP" />
+            <Input label="UF" value={form.state} onChange={e => setForm({ ...form, state: e.target.value })} maxLength={2} />
           </div>
-          
-          {/* Endereço com busca por CEP */}
-          <div>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <Input
-                  label="CEP"
-                  value={form.cep || ''}
-                  onChange={e => {
-                    const value = e.target.value
-                    setForm({ ...form, cep: value })
-                    // Busca automática quando tiver 8 dígitos
-                    if (value.replace(/\D/g, '').length === 8) {
-                      handleCepSearch(value)
-                    }
-                  }}
-                  placeholder="00000-000"
-                />
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                className="mt-6"
-                onClick={() => form.cep && handleCepSearch(form.cep)}
-                disabled={!form.cep || form.cep.replace(/\D/g, '').length !== 8}
-              >
-                Buscar
-              </Button>
-            </div>
-          </div>
+          <Input label="Endereço" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
 
-          <Input 
-            label="Endereço" 
-            value={form.address} 
-            onChange={e => setForm({ ...form, address: e.target.value })} 
-          />
-          
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Telefone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
-            <Input label="E-mail" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-          </div>
-
-          {/* Upload de logo (mantido igual) */}
+          {/* Imagem */}
           <div>
             <p className="text-sm font-semibold text-brand-900 mb-2 flex items-center gap-1.5">
-              <Upload className="h-3.5 w-3.5" /> Logo da Igreja
+              <Upload className="h-3.5 w-3.5" /> Imagem da Congregação
             </p>
             {logoPreview ? (
-              <div className="relative inline-block">
-                <img src={logoPreview} alt="Preview" className="h-24 w-24 rounded-xl object-cover border border-brand-100" />
-                <button
-                  type="button"
-                  onClick={() => { setLogoFile(null); setLogoPreview(null) }}
-                  className="absolute -top-2 -right-2 h-6 w-6 bg-red-500 text-white rounded-full flex items-center justify-center"
-                >
-                  <X className="h-3 w-3" />
+              <div className="flex items-center gap-3">
+                <img src={logoPreview} alt="Preview" className="h-20 w-20 rounded-xl object-cover border border-brand-100" />
+                <button type="button" onClick={() => { setLogoFile(null); setLogoPreview(null) }}
+                  className="text-xs text-red-500 hover:underline flex items-center gap-1">
+                  <X className="h-3.5 w-3.5" /> Remover
                 </button>
               </div>
             ) : (
@@ -370,14 +267,10 @@ export default function CongregarcoesPage() {
                 <Upload className="h-5 w-5 text-brand-300" />
                 <div>
                   <p className="text-sm font-medium text-brand-700">Clique para selecionar</p>
-                  <p className="text-xs text-brand-300">PNG, JPG ou SVG. Máx. 5MB.</p>
+                  <p className="text-xs text-brand-300">PNG, JPG. Máx. 5MB.</p>
                 </div>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
-                  className="hidden"
-                  onChange={e => handleLogoChange(e.target.files?.[0] || null)}
-                />
+                <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp"
+                  className="hidden" onChange={e => handleLogoChange(e.target.files?.[0] || null)} />
               </label>
             )}
           </div>

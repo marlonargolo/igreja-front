@@ -1,6 +1,6 @@
 // src/lib/AppContext.tsx
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react'
-import { http, tokenStore } from '@/lib/http'
+import { http, tokenStore, rootContext } from '@/lib/http'
 import { authService } from '@/services/auth.service'
 
 interface Church {
@@ -17,35 +17,50 @@ interface User {
   roles?: string[]
   permissions?: string[]
   organizationName?: string
-  churchId?: number        // NOVO — vem do login response
-  congregationId?: number  // NOVO — vem do login response
+  churchId?: number
+  congregationId?: number
   churches?: Church[]
 }
 
 interface AppContextType {
   user: User | null
   church: Church | null
+  loading: boolean
+  isRoot: boolean
   setUser: (user: User | null) => void
   setChurch: (church: Church | null) => void
-  loading: boolean
   logout: () => Promise<void>
-  isRoot: boolean
   hasPermission: (permission: string) => boolean
 }
 
 const AppContext = createContext<AppContextType | null>(null)
 
-export function AppProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [church, setChurch] = useState<Church | null>(null)
-  const [loading, setLoading] = useState(true)
+const SELECTED_CHURCH_KEY = 'igrejahub_selected_church_id'
 
-  function setChurchState(churchData: Church | null) {
-    setChurch(churchData)
+export function AppProvider({ children }: { children: ReactNode }) {
+  const [user, setUser]          = useState<User | null>(null)
+  const [church, setChurchState] = useState<Church | null>(null)
+  const [loading, setLoading]    = useState(true)
+
+  const isRoot = user?.roles?.includes('ROOT') ?? false
+
+  /**
+   * Selecionar uma Igreja:
+   *   - Persiste no localStorage para restaurar ao recarregar
+   *   - Para ROOT: configura rootContext com modo filtered + churchId
+   *     → os headers X-Root-Mode e X-Church-Id passam a ser enviados em todos os requests
+   *   - Para não-ROOT: apenas atualiza o estado local (churchId já está no JWT)
+   */
+  function setChurch(churchData: Church | null) {
+    setChurchState(churchData)
+
     if (churchData) {
-      localStorage.setItem('igrejahub_selected_church_id', churchData.id)
+      localStorage.setItem(SELECTED_CHURCH_KEY, churchData.id)
+      // ROOT: informa ao backend via header qual Igreja está sendo gerenciada
+      rootContext.setFiltered(churchData.id)
     } else {
-      localStorage.removeItem('igrejahub_selected_church_id')
+      localStorage.removeItem(SELECTED_CHURCH_KEY)
+      rootContext.setGlobal()
     }
   }
 
@@ -59,34 +74,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const me = await authService.me()
         setUser(me)
 
-        // Tentar restaurar igreja salva
-        const savedChurchId = localStorage.getItem('igrejahub_selected_church_id')
+        const isRootUser = me.roles?.includes('ROOT') ?? false
 
-        // Buscar igrejas disponíveis — o backend aplica o isolamento correto:
-        //   ROOT → todas; outros → apenas a própria
+        // Tentar restaurar Igreja salva
+        const savedId = localStorage.getItem(SELECTED_CHURCH_KEY)
+        if (savedId) {
+          // Configurar o rootContext ANTES de fazer qualquer request
+          // para que /churches/my já use o header correto
+          if (isRootUser) rootContext.setFiltered(savedId)
+        } else {
+          if (isRootUser) rootContext.setGlobal()
+        }
+
+        // Buscar igrejas disponíveis
         try {
           const res = await http.get<any>('/churches/my')
           const raw = res?.data
-          const list = Array.isArray(raw?.data) ? raw.data
-                     : Array.isArray(raw)       ? raw
-                     : raw?.content             || []
+          const list: any[] = Array.isArray(raw?.data) ? raw.data
+                            : Array.isArray(raw)       ? raw
+                            : raw?.content             || []
 
-          if (list.length === 1) {
-            // Usuário com acesso a uma única igreja: entra direto, sem tela de seleção
+          if (list.length === 1 && !savedId) {
+            // Uma única Igreja disponível → entrar direto
             const c = list[0]
-            setChurchState({ id: String(c.id), name: c.name, city: c.city || '', state: c.state || '' })
-          } else if (list.length > 1 && savedChurchId) {
-            // ROOT com múltiplas igrejas: restaurar a última seleção
-            const found = list.find((c: any) => String(c.id) === savedChurchId)
+            setChurch({ id: String(c.id), name: c.name, city: c.city || '', state: c.state || '' })
+          } else if (savedId) {
+            // Restaurar Igreja salva
+            const found = list.find((c: any) => String(c.id) === savedId)
             if (found) {
-              setChurchState({ id: String(found.id), name: found.name, city: found.city || '', state: found.state || '' })
+              setChurch({ id: String(found.id), name: found.name, city: found.city || '', state: found.state || '' })
             }
           }
-          // Caso list.length > 1 sem savedChurchId: vai para tela de seleção (church === null)
+          // Caso contrário → vai para tela de seleção (church === null)
         } catch {}
 
       } catch {
         tokenStore.clear()
+        rootContext.clear()
       } finally {
         setLoading(false)
       }
@@ -97,13 +121,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   async function logout() {
     try { await authService.logout() } catch {}
     tokenStore.clear()
-    localStorage.removeItem('igrejahub_selected_church_id')
+    rootContext.clear()
+    localStorage.removeItem(SELECTED_CHURCH_KEY)
     setUser(null)
-    setChurch(null)
+    setChurchState(null)
     window.location.href = '/login'
   }
-
-  const isRoot = user?.roles?.includes('ROOT') ?? false
 
   function hasPermission(permission: string): boolean {
     if (isRoot) return true
@@ -113,9 +136,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{
       user, setUser,
-      church, setChurch: setChurchState,
-      loading, logout,
-      isRoot, hasPermission,
+      church, setChurch,
+      loading, isRoot,
+      logout, hasPermission,
     }}>
       {children}
     </AppContext.Provider>

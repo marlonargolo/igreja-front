@@ -3,11 +3,11 @@ import { ApiError, type ApiListParams, type ApiSuccess } from '@/types/api'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://2.24.80.229:3000/api'
 
-const ACCESS_TOKEN_KEY = 'igrejahub_access_token'
+const ACCESS_TOKEN_KEY  = 'igrejahub_access_token'
 const REFRESH_TOKEN_KEY = 'igrejahub_refresh_token'
 
 export const tokenStore = {
-  getAccess: () => localStorage.getItem(ACCESS_TOKEN_KEY),
+  getAccess:  () => localStorage.getItem(ACCESS_TOKEN_KEY),
   getRefresh: () => localStorage.getItem(REFRESH_TOKEN_KEY),
   set: (access: string, refresh: string) => {
     localStorage.setItem(ACCESS_TOKEN_KEY, access)
@@ -16,6 +16,40 @@ export const tokenStore = {
   clear: () => {
     localStorage.removeItem(ACCESS_TOKEN_KEY)
     localStorage.removeItem(REFRESH_TOKEN_KEY)
+  },
+}
+
+/**
+ * Contexto de Igreja para o ROOT.
+ * Armazenado no sessionStorage (limpo ao fechar o browser/aba).
+ *
+ * rootMode:  'global'   → ROOT sem Igreja selecionada (vê tudo)
+ * rootMode:  'filtered' → ROOT com Igreja selecionada (usa churchId)
+ * churchId:  ID da Igreja selecionada (número ou null)
+ */
+const ROOT_MODE_KEY    = 'igrejahub_root_mode'
+const ROOT_CHURCH_KEY  = 'igrejahub_root_church_id'
+
+export const rootContext = {
+  getMode:    (): 'global' | 'filtered' =>
+    (sessionStorage.getItem(ROOT_MODE_KEY) as 'global' | 'filtered') ?? 'global',
+
+  getChurchId: (): string | null =>
+    sessionStorage.getItem(ROOT_CHURCH_KEY),
+
+  setGlobal: () => {
+    sessionStorage.setItem(ROOT_MODE_KEY, 'global')
+    sessionStorage.removeItem(ROOT_CHURCH_KEY)
+  },
+
+  setFiltered: (churchId: string | number) => {
+    sessionStorage.setItem(ROOT_MODE_KEY, 'filtered')
+    sessionStorage.setItem(ROOT_CHURCH_KEY, String(churchId))
+  },
+
+  clear: () => {
+    sessionStorage.removeItem(ROOT_MODE_KEY)
+    sessionStorage.removeItem(ROOT_CHURCH_KEY)
   },
 }
 
@@ -35,6 +69,22 @@ function buildUrl(path: string, params?: Record<string, unknown>) {
     })
   }
   return url.toString()
+}
+
+/** Monta os headers de contexto ROOT para cada request. */
+function buildRootHeaders(): Record<string, string> {
+  const mode     = rootContext.getMode()
+  const churchId = rootContext.getChurchId()
+
+  const headers: Record<string, string> = {
+    'X-Root-Mode': mode,
+  }
+
+  if (mode === 'filtered' && churchId) {
+    headers['X-Church-Id'] = churchId
+  }
+
+  return headers
 }
 
 let refreshPromise: Promise<void> | null = null
@@ -67,6 +117,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     headers: {
       'Content-Type': 'application/json',
       ...(access ? { Authorization: `Bearer ${access}` } : {}),
+      // Headers de contexto ROOT — enviados em TODOS os requests
+      // O backend ignora se o usuário não for ROOT
+      ...buildRootHeaders(),
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -92,7 +145,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (!res.ok) {
     const message = json?.error?.message ?? json?.message ?? 'Erro inesperado ao comunicar com o servidor.'
-    const code = json?.error?.code ?? 'UNKNOWN_ERROR'
+    const code    = json?.error?.code ?? 'UNKNOWN_ERROR'
     throw new ApiError(res.status, code, message, json?.error?.details)
   }
 
@@ -122,13 +175,20 @@ export const http = {
 
     const res = await fetch(buildUrl(path), {
       method: 'POST',
-      headers: access ? { Authorization: `Bearer ${access}` } : undefined,
+      headers: {
+        ...(access ? { Authorization: `Bearer ${access}` } : {}),
+        ...buildRootHeaders(),
+      },
       body: formData,
     })
 
     const json = await res.json().catch(() => null)
     if (!res.ok) {
-      throw new ApiError(res.status, json?.error?.code ?? 'UPLOAD_ERROR', json?.error?.message ?? 'Falha no upload.')
+      throw new ApiError(
+        res.status,
+        json?.error?.code ?? 'UPLOAD_ERROR',
+        json?.error?.message ?? 'Falha no upload.',
+      )
     }
     return json as T
   },
