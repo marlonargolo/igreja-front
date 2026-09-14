@@ -3,8 +3,16 @@ import { Navigate } from 'react-router-dom'
 import { ReactNode } from 'react'
 import { useApp } from '@/lib/AppContext'
 
-export function ProtectedRoute({ children, requireChurch = false }: { children: ReactNode; requireChurch?: boolean }) {
-  const { user, church, loading } = useApp()
+export function ProtectedRoute({
+  children,
+  requireChurch = false,
+  requireRoot = false,
+}: {
+  children: ReactNode
+  requireChurch?: boolean
+  requireRoot?: boolean
+}) {
+  const { user, church, loading, isRoot } = useApp()
 
   if (loading) {
     return (
@@ -15,6 +23,12 @@ export function ProtectedRoute({ children, requireChurch = false }: { children: 
   }
 
   if (!user) return <Navigate to="/login" replace />
+
+  // Administração externa: exclusiva do ROOT. Qualquer outro usuário é
+  // redirecionado para a seleção de igreja, mesmo que acesse a rota diretamente.
+  if (requireRoot && !isRoot) {
+    return <Navigate to="/selecionar-igreja" replace />
+  }
 
   if (requireChurch && !church) {
     // Redirecionar para seleção de igreja

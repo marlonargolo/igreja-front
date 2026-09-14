@@ -20,6 +20,8 @@ export interface UserListParams {
   page?: number
   size?: number
   search?: string
+  churchId?: number | string
+  congregationId?: number | string
 }
 
 export interface CreateUserPayload {
@@ -44,6 +46,8 @@ export const usersService = {
       page: params.page ?? 0,
       size: params.size ?? 20,
       search: params.search,
+      churchId: params.churchId,
+      congregationId: params.congregationId,
     })
     return response.data
   },
@@ -69,6 +73,15 @@ export const usersService = {
 
   async enable(id: number) {
     await http.patch(`/users/${id}/enable`)
+  },
+
+  async remove(id: number) {
+    await http.delete(`/users/${id}`)
+  },
+
+  async resetPassword(id: number) {
+    const res = await http.post<ApiSuccess<{ password?: string }>>(`/users/${id}/reset-password`)
+    return res.data
   },
 
   async changePassword(currentPassword: string, newPassword: string) {
