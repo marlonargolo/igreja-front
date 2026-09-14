@@ -98,7 +98,7 @@ export default function Demonstracoes() {
       </div>
     </div>
     <p style="margin-top:40px;font-size:10px;color:#999;text-align:center">
-      Balanço gerado automaticamente a partir das movimentações financeiras registradas no IgrejaHub.
+      Balanço gerado automaticamente a partir das movimentações financeiras registradas no NEXO.
       Para fins contábeis formais, consulte o contador responsável.
     </p>
     </body></html>`)

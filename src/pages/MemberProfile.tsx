@@ -29,6 +29,87 @@ const statusTone: Record<string, 'green' | 'gray' | 'blue'> = {
   VISITOR: 'blue',
 }
 
+// ── Componente de contribuições — carrega do backend ─────────────────────────
+
+interface Contribution {
+  id: number
+  description: string
+  amount: number
+  transactionDate: string
+  status: string
+  categoryName?: string
+}
+
+function ContribuicoesTab({ memberId }: { memberId: number }) {
+  const [contributions, setContributions] = useState<Contribution[]>([])
+  const [loading, setLoading] = useState(true)
+  const showToast = useToast()
+
+  useEffect(() => {
+    http.get<any>(`/finance/transactions/member/${memberId}`)
+      .then(res => {
+        const raw = res?.data
+        const list = raw?.data || raw?.content || raw || []
+        setContributions(Array.isArray(list) ? list : [])
+      })
+      .catch(() => showToast('Falha ao carregar contribuições.'))
+      .finally(() => setLoading(false))
+  }, [memberId])
+
+  const total = contributions.reduce((s, c) => s + Number(c.amount), 0)
+
+  function fmt(v: number) {
+    return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  }
+
+  return (
+    <Card>
+      <CardBody className="pt-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-brand-900">Contribuições Financeiras</h3>
+          {contributions.length > 0 && (
+            <span className="text-sm font-semibold text-green-600">
+              Total: {fmt(total)}
+            </span>
+          )}
+        </div>
+
+        {loading ? (
+          <div className="py-6 text-center text-brand-300">Carregando...</div>
+        ) : contributions.length === 0 ? (
+          <div className="bg-brand-50 border border-brand-100 rounded-lg p-4 text-sm text-brand-700">
+            Nenhuma contribuição registrada para este membro. Para registrar, acesse{' '}
+            <strong>Tesouraria → Receitas</strong> e selecione este membro no campo "Membro".
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {contributions.map(c => (
+              <div key={c.id}
+                className="flex items-center justify-between py-2.5 px-3 rounded-lg border border-brand-100 hover:bg-brand-50">
+                <div>
+                  <p className="text-sm font-medium text-brand-900">{c.description}</p>
+                  <p className="text-xs text-brand-400">
+                    {new Date(c.transactionDate).toLocaleDateString('pt-BR')}
+                    {c.categoryName && ` · ${c.categoryName}`}
+                  </p>
+                </div>
+                <div className="text-right shrink-0 ml-4">
+                  <p className="text-sm font-semibold text-green-600">{fmt(Number(c.amount))}</p>
+                  <Badge tone={c.status === 'CONFIRMED' ? 'green' : 'yellow'} className="text-[10px]">
+                    {c.status === 'CONFIRMED' ? 'Confirmado' : 'Pendente'}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function MemberProfile() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -441,17 +522,7 @@ export default function MemberProfile() {
           )}
 
           {tab === 'Contribuições' && (
-            <Card>
-              <CardBody className="pt-6">
-                <h3 className="font-bold text-brand-900 mb-4">Contribuições Financeiras</h3>
-                <p className="text-sm text-brand-300 mb-4">
-                  Vinculação de dízimos e ofertas ao perfil do membro disponível após configuração do módulo financeiro com identificação por membro.
-                </p>
-                <div className="bg-brand-50 border border-brand-100 rounded-lg p-4 text-sm text-brand-700">
-                  Para registrar contribuições, acesse <strong>Tesouraria → Receitas</strong> e informe o nome do membro na descrição do lançamento.
-                </div>
-              </CardBody>
-            </Card>
+            <ContribuicoesTab memberId={member.id} />
           )}
           {tab === 'Documentos' && (
             <Card>

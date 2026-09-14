@@ -32,6 +32,7 @@ const navPrincipal: NavItem[] = [
       { to: '/secretaria/transferencias', label: 'Transferências' },
       { to: '/secretaria/credenciais', label: 'Credenciais' },
       { to: '/secretaria/relatorios', label: 'Relatórios' },
+      { to: '/secretaria/documentos', label: 'Documentos' },
       { to: '/secretaria/configuracoes', label: 'Configurações' },
     ],
   },
@@ -98,12 +99,16 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }: SidebarProps) {
-  const { church, user, setUser, setChurch } = useApp()
+  const { church, user, setUser, setChurch, hasPermission, isRoot } = useApp()
   const navigate = useNavigate()
   const [openGroups, setOpenGroups] = useState<string[]>([])
 
   const isAdmin = user?.roles?.some(r => ADMIN_ROLES.includes(r)) ?? false
-  const allNav = isAdmin ? [...navPrincipal, ...navAdmin] : navPrincipal
+  const canViewAccounting = isRoot || hasPermission('ACCOUNTING_VIEW')
+  const principalFiltered = navPrincipal.filter(item =>
+    item.label !== 'Contabilidade' || canViewAccounting
+  )
+  const allNav = isAdmin ? [...principalFiltered, ...navAdmin] : principalFiltered
 
   function toggleGroup(label: string) {
     setOpenGroups(prev =>
@@ -137,7 +142,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
             <div className="h-8 w-8 rounded-lg bg-white flex items-center justify-center shrink-0">
               <Cloud className="h-4 w-4 text-brand-800" fill="currentColor" />
             </div>
-            {!collapsed && <span className="font-extrabold text-lg tracking-tight whitespace-nowrap">IgrejaHub</span>}
+            {!collapsed && <span className="font-extrabold text-lg tracking-tight whitespace-nowrap">NEXO</span>}
           </div>
           <button onClick={onCloseMobile} className="lg:hidden text-white/70 hover:text-white">
             <X className="h-5 w-5" />

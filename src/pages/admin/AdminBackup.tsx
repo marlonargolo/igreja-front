@@ -116,7 +116,7 @@ export default function AdminBackup() {
               <div>
                 <p className="font-bold text-brand-900">Restaurar Backup</p>
                 <p className="text-sm text-brand-300">
-                  Selecione um arquivo .json gerado pelo IgrejaHub para restaurar os dados.
+                  Selecione um arquivo .json gerado pelo NEXO para restaurar os dados.
                 </p>
               </div>
             </div>

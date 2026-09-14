@@ -31,22 +31,12 @@ const TIPO_LABEL: Record<string, string> = {
   EQUITY: 'Patrimônio', REVENUE: 'Receita', EXPENSE: 'Despesa',
 }
 
-const CATEGORIAS_FIN = [
-  'Dízimo', 'Oferta', 'Oferta Alçada', 'Campanha', 'Doação',
-  'Conta de Água', 'Conta de Luz', 'Material de Limpeza', 'Aluguel',
-  'Manutenção', 'Equipamentos', 'Transferência', 'Repasse (Redízimo)', 'Outros',
-]
-
 export default function PlanoDeContas() {
   const showToast = useToast()
   const [tab, setTab] = useState('Plano de Contas')
   const [accounts, setAccounts] = useState<Account[]>([])
-  const [mapeamentos, setMapeamentos] = useState<Mapeamento[]>([
-    { id: 1, categoriaFinanceira: 'Dízimo', contaContabil: '706 — Receitas Diversas', tipo: 'REVENUE' },
-    { id: 2, categoriaFinanceira: 'Oferta', contaContabil: '706 — Receitas Diversas', tipo: 'REVENUE' },
-    { id: 3, categoriaFinanceira: 'Aluguel', contaContabil: '478 — Contas a Pagar', tipo: 'EXPENSE' },
-    { id: 4, categoriaFinanceira: 'Conta de Luz', contaContabil: '478 — Contas a Pagar', tipo: 'EXPENSE' },
-  ])
+  const [mapeamentos, setMapeamentos] = useState<Mapeamento[]>([])
+  const [finCategories, setFinCategories] = useState<string[]>([]) // categorias do backend
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [mapOpen, setMapOpen] = useState(false)
@@ -54,7 +44,7 @@ export default function PlanoDeContas() {
   const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [form, setForm] = useState({ code: '', name: '', accountType: 'ASSET' })
   const [mapForm, setMapForm] = useState({
-    categoriaFinanceira: CATEGORIAS_FIN[0],
+    categoriaFinanceira: '',
     contaContabil: '',
     tipo: 'REVENUE' as 'REVENUE' | 'EXPENSE',
   })
@@ -64,8 +54,16 @@ export default function PlanoDeContas() {
   async function load() {
     setLoading(true)
     try {
-      const res = await http.get<ApiSuccess<Account[]>>('/accounting/chart-of-accounts')
-      setAccounts(Array.isArray(res.data) ? res.data : [])
+      const [acctRes, catRes] = await Promise.all([
+        http.get<ApiSuccess<Account[]>>('/accounting/chart-of-accounts'),
+        http.get<any>('/finance/categories/active'),
+      ])
+      setAccounts(Array.isArray(acctRes.data) ? acctRes.data : [])
+      const catRaw = catRes?.data
+      const catList: any[] = Array.isArray(catRaw?.data) ? catRaw.data
+                           : Array.isArray(catRaw) ? catRaw
+                           : catRaw?.content || []
+      setFinCategories(catList.map((c: any) => c.name))
     } catch {
       showToast('Falha ao carregar plano de contas.')
     } finally {
@@ -138,7 +136,7 @@ export default function PlanoDeContas() {
     }])
     showToast('Mapeamento adicionado.')
     setMapOpen(false)
-    setMapForm({ categoriaFinanceira: CATEGORIAS_FIN[0], contaContabil: '', tipo: 'REVENUE' })
+    setMapForm({ categoriaFinanceira: finCategories[0] || '', contaContabil: '', tipo: 'REVENUE' })
   }
 
   function removeMapeamento(id: number) {
@@ -280,7 +278,7 @@ export default function PlanoDeContas() {
       >
         <div className="space-y-4">
           <Select label="Categoria Financeira" value={mapForm.categoriaFinanceira} onChange={e => setMapForm({ ...mapForm, categoriaFinanceira: e.target.value })}>
-            {CATEGORIAS_FIN.map(c => <option key={c} value={c}>{c}</option>)}
+            {finCategories.map(c => <option key={c} value={c}>{c}</option>)}
           </Select>
           <Select label="Tipo" value={mapForm.tipo} onChange={e => setMapForm({ ...mapForm, tipo: e.target.value as any })}>
             <option value="REVENUE">Receita</option>

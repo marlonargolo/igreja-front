@@ -1,3 +1,11 @@
+/**
+ * Despesas.tsx
+ * - type: 'EXPENSE' em todas as chamadas
+ * - Categorias carregadas do backend (tipo EXPENSE) + criação inline
+ * - Contas carregadas do backend
+ * - Comprovante sempre visível
+ * - categoryId e accountId reais (não hardcoded)
+ */
 import { useEffect, useState, useMemo } from 'react'
 import { Plus, TrendingDown, Edit2, Trash2, Paperclip } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
@@ -11,92 +19,116 @@ import { MetricCard } from '@/components/ui/Misc'
 import { formatCurrency } from '@/lib/format'
 import { useToast } from '@/components/ui/Extras'
 import { financeService, type Transaction } from '@/services'
-import { useConfig } from '@/lib/ConfigContext'
-import { useApp } from '@/lib/AppContext'
+import { http } from '@/lib/http'
 
-// REMOVA esta linha - está causando o erro
-// const CATEGORIAS_DESPESA = categoriasFinanceiras.filter(c => ...)
+interface Category { id: number; name: string }
+interface Account  { id: number; name: string }
 
 export default function Despesas() {
   const showToast = useToast()
-  const { categoriasFinanceiras, local } = useConfig()
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [loading, setLoading] = useState(true)
-  const [open, setOpen] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [comprovante, setComprovante] = useState<File | null>(null)
+  const [categories,   setCategories]   = useState<Category[]>([])
+  const [accounts,     setAccounts]     = useState<Account[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [open,         setOpen]         = useState(false)
+  const [submitting,   setSubmitting]   = useState(false)
+  const [editingId,    setEditingId]    = useState<number | null>(null)
+  const [comprovante,  setComprovante]  = useState<File | null>(null)
+
+  // "Nova categoria" digitada inline
+  const [newCatName, setNewCatName] = useState('')
+  const [addingCat,  setAddingCat]  = useState(false)
+
   const [form, setForm] = useState({
-    description: '',
-    amount: '',
+    description: '', amount: '',
     dateLancamento: new Date().toISOString().split('T')[0],
-    dateVencimento: '',
-    datePagamento: '',
-    category: 'Conta de Luz',
-    isProvisao: false,
-    parcelas: '1',
-    fornecedor: '',
+    dateVencimento: '', datePagamento: '',
+    categoryId: '', accountId: '',
+    isProvisao: false, parcelas: '1', fornecedor: '',
   })
-  const { church } = useApp()
 
-  // MOVA a constante para DENTRO do componente, DEPOIS de obter categoriasFinanceiras
-  const CATEGORIAS_DESPESA = categoriasFinanceiras.filter(c =>
-    c.toLowerCase().includes('agua') ||
-    c.toLowerCase().includes('luz') ||
-    c.toLowerCase().includes('aluguel') ||
-    c.toLowerCase().includes('material') ||
-    c.toLowerCase().includes('manutencao') ||
-    c.toLowerCase().includes('equipamento') ||
-    c.toLowerCase().includes('transferência') ||
-    c.toLowerCase().includes('repasse') ||
-    c.toLowerCase().includes('redízimo')
-  )
+  useEffect(() => { loadAll() }, [])
 
-  useEffect(() => { load() }, [])
-
-  async function load() {
+  async function loadAll() {
     setLoading(true)
     try {
-      const res = await financeService.list({ size: 100, type: 'EXPENSE' }) as any
-      const list = res?.data?.data || res?.data?.content || res?.data || res || []
-      setTransactions(Array.isArray(list) ? list : [])
+      const [txRes, catRes, accRes] = await Promise.all([
+        // type=EXPENSE garante que nunca vemos receitas
+        financeService.list({ size: 200, type: 'EXPENSE' }) as any,
+        // Categorias filtradas por EXPENSE e pela Igreja do usuário (via header)
+        http.get<any>('/finance/categories/active', { type: 'EXPENSE' }),
+        http.get<any>('/finance/accounts/active'),
+      ])
+
+      const txRaw = txRes as any
+      setTransactions(txRaw?.data?.data || txRaw?.data?.content || txRaw?.data || [])
+
+      const catRaw = catRes?.data
+      setCategories(Array.isArray(catRaw?.data) ? catRaw.data
+                  : Array.isArray(catRaw)       ? catRaw
+                  : catRaw?.content             || [])
+
+      const accRaw = accRes?.data
+      setAccounts(Array.isArray(accRaw?.data) ? accRaw.data
+                : Array.isArray(accRaw)       ? accRaw
+                : accRaw?.content             || [])
     } catch {
-      showToast('Falha ao carregar despesas.')
-      setTransactions([])
+      showToast('Falha ao carregar dados.')
     } finally {
       setLoading(false)
     }
   }
 
-  const total = useMemo(() => transactions.reduce((s, t) => s + Number(t.amount), 0), [transactions])
+  /** Criar nova categoria EXPENSE inline e selecionar ela */
+  async function handleAddCategory() {
+    if (!newCatName.trim()) return
+    setAddingCat(true)
+    try {
+      const res = await http.post<any>('/finance/categories', {
+        name: newCatName.trim(),
+        type: 'EXPENSE',
+        color: '#ef4444',
+      })
+      const raw = res?.data
+      const created: Category = raw?.data || raw
+      setCategories(prev => [...prev, created])
+      setForm(f => ({ ...f, categoryId: String(created.id) }))
+      setNewCatName('')
+      showToast(`Categoria "${created.name}" adicionada.`)
+    } catch (err: any) {
+      showToast(err?.response?.data?.message || 'Falha ao criar categoria.')
+    } finally {
+      setAddingCat(false)
+    }
+  }
+
+  const total   = useMemo(() => transactions.reduce((s, t) => s + Number(t.amount), 0), [transactions])
+  const pending = useMemo(() => transactions.filter(t => t.status === 'PENDING').length,  [transactions])
 
   function resetForm() {
     setForm({
-      description: '', amount: '', dateLancamento: new Date().toISOString().split('T')[0],
-      dateVencimento: '', datePagamento: '', category: 'Conta de Luz',
+      description: '', amount: '',
+      dateLancamento: new Date().toISOString().split('T')[0],
+      dateVencimento: '', datePagamento: '',
+      categoryId: categories[0] ? String(categories[0].id) : '',
+      accountId:  accounts[0]   ? String(accounts[0].id)   : '',
       isProvisao: false, parcelas: '1', fornecedor: '',
     })
     setComprovante(null)
     setEditingId(null)
+    setNewCatName('')
   }
 
-  function openNew() {
-    resetForm()
-    setOpen(true)
-  }
+  function openNew() { resetForm(); setOpen(true) }
 
   function openEdit(t: Transaction) {
     setEditingId(t.id)
     setForm({
-      description: t.description,
-      amount: String(t.amount),
+      description: t.description, amount: String(t.amount),
       dateLancamento: t.transactionDate,
-      dateVencimento: '',
-      datePagamento: '',
-      category: t.categoryName || 'Conta de Luz',
-      isProvisao: false,
-      parcelas: '1',
-      fornecedor: '',
+      dateVencimento: '', datePagamento: '',
+      categoryId: t.categoryId ? String(t.categoryId) : '',
+      accountId: '', isProvisao: false, parcelas: '1', fornecedor: '',
     })
     setComprovante(null)
     setOpen(true)
@@ -104,76 +136,75 @@ export default function Despesas() {
 
   async function handleDelete(id: number) {
     if (!confirm('Excluir esta despesa?')) return
-    try {
-      await financeService.delete(id)
-      showToast('Despesa excluída.')
-      load()
-    } catch {
-      showToast('Falha ao excluir.')
-    }
+    try { await financeService.delete(id); showToast('Despesa excluída.'); loadAll() }
+    catch { showToast('Falha ao excluir.') }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!form.description || !form.amount) { showToast('Preencha descrição e valor.'); return }
+    if (!editingId && !form.categoryId) { showToast('Selecione ou crie uma categoria.'); return }
+    if (!editingId && !form.accountId)  { showToast('Selecione a conta.'); return }
     setSubmitting(true)
     try {
-      const desc = form.fornecedor
-        ? `${form.fornecedor} — ${form.description}`
-        : form.description
-
       if (editingId) {
         await financeService.update(editingId, {
-          description: desc,
+          description: form.description,
           amount: parseFloat(form.amount),
           transactionDate: form.dateLancamento,
         } as any)
         showToast('Despesa atualizada.')
       } else {
-        await financeService.create({
-          churchId: church?.id ? Number(church.id) : undefined,
+        // type: 'EXPENSE' garante criação como despesa — nunca como receita
+        const created = await financeService.create({
           type: 'EXPENSE',
-          description: desc,
+          description: form.fornecedor
+            ? `${form.description} — ${form.fornecedor}`
+            : form.description,
           amount: parseFloat(form.amount),
           transactionDate: form.dateLancamento,
-          categoryId: 1,
-          accountId: 1,
-        } as any)
-        showToast('Despesa registrada com sucesso.')
+          categoryId: Number(form.categoryId),
+          accountId:  Number(form.accountId),
+          notes: form.isProvisao
+            ? `Provisão | Vencimento: ${form.dateVencimento || '—'} | Parcelas: ${form.parcelas}`
+            : undefined,
+        } as any) as any
+
+        // Upload comprovante (sempre disponível, não só em provisão)
+        if (comprovante && created?.id) {
+          try {
+            await http.upload(`/finance/transactions/${created.id}/attachment`, comprovante, 'file')
+          } catch { showToast('Despesa salva, mas falha ao anexar comprovante.') }
+        }
+        showToast('Despesa registrada.')
       }
       setOpen(false)
       resetForm()
-      load()
-    } catch {
-      showToast('Falha ao registrar despesa.')
-    } finally {
-      setSubmitting(false)
-    }
+      loadAll()
+    } catch (err: any) {
+      showToast(err?.response?.data?.message || err?.message || 'Falha ao salvar despesa.')
+    } finally { setSubmitting(false) }
   }
 
   return (
-    <Layout
-      crumbs={[{ label: 'Tesouraria' }, { label: 'Despesas' }]}
-      title="Despesas"
-      action={{ label: 'Nova Despesa', icon: <Plus className="h-4 w-4" />, onClick: openNew }}
-    >
+    <Layout crumbs={[{ label: 'Tesouraria' }, { label: 'Despesas' }]} title="Despesas"
+      action={{ label: 'Nova Despesa', icon: <Plus className="h-4 w-4" />, onClick: openNew }}>
+
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        <MetricCard label="Total de Despesas" value={formatCurrency(total)} icon={<TrendingDown className="h-4 w-4" />} trendUp={false} />
-        <MetricCard label="Lançamentos" value={String(transactions.length)} icon={<TrendingDown className="h-4 w-4" />} trendUp={false} />
+        <MetricCard label="Total Despesas" value={formatCurrency(total)}    icon={<TrendingDown className="h-4 w-4" />} />
+        <MetricCard label="Pendentes"       value={String(pending)}         icon={<TrendingDown className="h-4 w-4" />} tone="yellow" />
+        <MetricCard label="Lançamentos"     value={String(transactions.length)} icon={<TrendingDown className="h-4 w-4" />} />
       </div>
 
       <Card>
         <CardHeader><CardTitle>Lançamentos de Despesas</CardTitle></CardHeader>
         <CardBody className="pt-2">
-          {loading ? (
-            <div className="py-8 text-center text-brand-300">Carregando...</div>
-          ) : transactions.length === 0 ? (
-            <div className="py-8 text-center text-brand-300">Nenhuma despesa lançada.</div>
-          ) : (
+          {loading ? <div className="py-8 text-center text-brand-300">Carregando...</div>
+          : transactions.length === 0 ? <div className="py-8 text-center text-brand-300">Nenhuma despesa lançada.</div>
+          : (
             <Table>
               <Thead>
-                <tr>
-                  <Th>Data</Th><Th>Descrição</Th><Th>Categoria</Th><Th>Valor</Th><Th>Status</Th><Th>Ações</Th>
-                </tr>
+                <tr><Th>Data</Th><Th>Descrição</Th><Th>Categoria</Th><Th>Valor</Th><Th>Status</Th><Th>Ações</Th></tr>
               </Thead>
               <tbody>
                 {transactions.map(t => (
@@ -185,12 +216,8 @@ export default function Despesas() {
                     <Td><Badge tone={t.status === 'CONFIRMED' ? 'green' : 'yellow'}>{t.status}</Badge></Td>
                     <Td>
                       <div className="flex gap-1">
-                        <button onClick={() => openEdit(t)} className="p-1.5 rounded hover:bg-brand-50 text-brand-400" title="Editar">
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => handleDelete(t.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400" title="Excluir">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        <button onClick={() => openEdit(t)} className="p-1.5 rounded hover:bg-brand-50 text-brand-400"><Edit2 className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => handleDelete(t.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>
                       </div>
                     </Td>
                   </Tr>
@@ -201,9 +228,7 @@ export default function Despesas() {
         </CardBody>
       </Card>
 
-      <Modal
-        open={open}
-        onClose={() => { setOpen(false); resetForm() }}
+      <Modal open={open} onClose={() => { setOpen(false); resetForm() }}
         title={editingId ? 'Editar Despesa' : 'Nova Despesa'}
         footer={
           <>
@@ -212,74 +237,87 @@ export default function Despesas() {
               {submitting ? 'Salvando...' : editingId ? 'Salvar' : 'Registrar Despesa'}
             </Button>
           </>
-        }
-      >
+        }>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Select label="Categoria" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
-            {CATEGORIAS_DESPESA.map(c => <option key={c} value={c}>{c}</option>)}
-          </Select>
 
-          <Input
-            label="Descrição"
-            value={form.description}
-            onChange={e => setForm({ ...form, description: e.target.value })}
-            required
-          />
+          {/* Categoria: select existente + campo inline para criar nova */}
+          <div>
+            <Select label="Categoria" value={form.categoryId}
+              onChange={e => setForm({ ...form, categoryId: e.target.value })}>
+              <option value="">— Selecione a categoria —</option>
+              {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+            </Select>
+            {/* Adicionar nova categoria inline */}
+            <div className="flex gap-2 mt-2">
+              <input
+                type="text"
+                placeholder="Ou digite nova categoria..."
+                value={newCatName}
+                onChange={e => setNewCatName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCategory() } }}
+                className="flex-1 text-sm px-3 py-2 rounded-lg border border-brand-100 outline-none focus:border-brand-500 placeholder:text-brand-300"
+              />
+              <Button type="button" size="sm" variant="outline"
+                onClick={handleAddCategory} disabled={addingCat || !newCatName.trim()}>
+                {addingCat ? '...' : '+ Adicionar'}
+              </Button>
+            </div>
+          </div>
+
+          {/* Conta */}
+          {!editingId && (
+            <Select label="Conta / Caixa" value={form.accountId}
+              onChange={e => setForm({ ...form, accountId: e.target.value })}>
+              <option value="">— Selecione a conta —</option>
+              {accounts.map(a => <option key={a.id} value={String(a.id)}>{a.name}</option>)}
+            </Select>
+          )}
+
+          <Input label="Descrição" value={form.description}
+            onChange={e => setForm({ ...form, description: e.target.value })} required />
 
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Valor (R$)" type="number" step="0.01" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required />
-            <Input label="Data do Lançamento" type="date" value={form.dateLancamento} onChange={e => setForm({ ...form, dateLancamento: e.target.value })} />
+            <Input label="Valor (R$)" type="number" step="0.01" value={form.amount}
+              onChange={e => setForm({ ...form, amount: e.target.value })} required />
+            <Input label="Data do Lançamento" type="date" value={form.dateLancamento}
+              onChange={e => setForm({ ...form, dateLancamento: e.target.value })} />
+          </div>
+
+          {/* Comprovante — sempre visível */}
+          <div>
+            <p className="text-sm font-semibold text-brand-900 mb-1.5 flex items-center gap-1.5">
+              <Paperclip className="h-3.5 w-3.5" /> Comprovante (opcional)
+            </p>
+            <input type="file" accept="image/*,application/pdf"
+              onChange={e => setComprovante(e.target.files?.[0] || null)}
+              className="text-sm text-brand-500" />
+            {comprovante && <p className="text-xs text-brand-300 mt-1">{comprovante.name}</p>}
           </div>
 
           {/* Provisão toggle */}
-          <div className="flex items-center gap-2 pt-1">
-            <input
-              type="checkbox"
-              id="provisao"
-              checked={form.isProvisao}
+          <div className="flex items-center gap-2">
+            <input type="checkbox" id="provisao" checked={form.isProvisao}
               onChange={e => setForm({ ...form, isProvisao: e.target.checked })}
-              className="h-4 w-4 rounded border-brand-200"
-            />
+              className="h-4 w-4 rounded border-brand-200" />
             <label htmlFor="provisao" className="text-sm font-medium text-brand-700">
               Provisão (parcelamento / pagamento futuro)
             </label>
           </div>
 
-          {/* Campos que aparecem APENAS quando Provisão está marcado */}
           {form.isProvisao && (
             <div className="space-y-4 border-l-2 border-brand-100 pl-4">
-              <Input
-                label="Fornecedor"
-                value={form.fornecedor}
+              <Input label="Fornecedor" value={form.fornecedor}
                 onChange={e => setForm({ ...form, fornecedor: e.target.value })}
-                placeholder="Ex: Sanepar, Copel, Locadora..."
-              />
+                placeholder="Ex: Sanepar, Copel..." />
               <div className="grid grid-cols-2 gap-4">
-                <Input label="Data de Vencimento" type="date" value={form.dateVencimento} onChange={e => setForm({ ...form, dateVencimento: e.target.value })} />
-                <Input label="Data de Pagamento" type="date" value={form.datePagamento} onChange={e => setForm({ ...form, datePagamento: e.target.value })} />
+                <Input label="Data de Vencimento" type="date" value={form.dateVencimento}
+                  onChange={e => setForm({ ...form, dateVencimento: e.target.value })} />
+                <Input label="Data de Pagamento" type="date" value={form.datePagamento}
+                  onChange={e => setForm({ ...form, datePagamento: e.target.value })} />
               </div>
-              <Input
-                label="Número de Parcelas"
-                type="number"
-                min="1"
-                max="120"
+              <Input label="Número de Parcelas" type="number" min="1" max="120"
                 value={form.parcelas}
-                onChange={e => setForm({ ...form, parcelas: e.target.value })}
-              />
-              <div>
-                <p className="text-sm font-semibold text-brand-900 mb-1.5 flex items-center gap-1.5">
-                  <Paperclip className="h-3.5 w-3.5" /> Comprovante
-                </p>
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={e => setComprovante(e.target.files?.[0] || null)}
-                  className="text-sm text-brand-500"
-                />
-                {comprovante && (
-                  <p className="text-xs text-brand-300 mt-1">{comprovante.name}</p>
-                )}
-              </div>
+                onChange={e => setForm({ ...form, parcelas: e.target.value })} />
             </div>
           )}
         </form>

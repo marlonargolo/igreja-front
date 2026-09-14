@@ -66,7 +66,7 @@ export default function Login() {
           <div className="h-9 w-9 rounded-lg bg-white flex items-center justify-center">
             <Cloud className="h-5 w-5 text-brand-800" fill="currentColor" />
           </div>
-          <span className="font-extrabold text-xl">IgrejaHub</span>
+          <span className="font-extrabold text-xl">NEXO</span>
         </div>
         <div className="relative">
           <h1 className="text-4xl font-extrabold leading-tight mb-4">
@@ -89,7 +89,7 @@ export default function Login() {
             ))}
           </div>
         </div>
-        <p className="text-white/40 text-xs relative">© 2026 IgrejaHub. Todos os direitos reservados.</p>
+        <p className="text-white/40 text-xs relative">© 2026 NEXO. Todos os direitos reservados.</p>
       </div>
 
       <div className="flex-1 flex items-center justify-center px-6 py-16 bg-white">

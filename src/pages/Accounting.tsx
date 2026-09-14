@@ -15,9 +15,11 @@ import { Tabs } from '@/components/ui/Tabs'
 import { useToast } from '@/components/ui/Extras'
 import { formatCurrency } from '@/lib/format'
 import { financeService, type Transaction } from '@/services'
+import { congregationsService, type Congregation } from '@/services/congregations.service'
 import { churchesService, type Church } from '@/services/churches.service'
 import { FILES_BASE } from '@/services/churches.service'
 import { useConfig } from '@/lib/ConfigContext'
+import { useApp } from '@/lib/AppContext'
 import { Edit2, XCircle } from 'lucide-react'
 
 
@@ -39,9 +41,10 @@ export default function Accounting() {
 
 function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
   const { config } = useConfig()
+  const { church: currentChurch, isRoot } = useApp()
   const [tab, setTab] = useState('Visão Geral')
   const [transactions, setTransactions] = useState<Transaction[]>([])
-  const [churches, setChurches] = useState<Church[]>([])
+  const [congregations, setCongregations] = useState<Congregation[]>([])
   const [churchFilter, setChurchFilter] = useState('Todas')
   const [mesFilter, setMesFilter] = useState('')
   const [contaFilter, setContaFilter] = useState('Todas')
@@ -79,13 +82,15 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
   async function load() {
     setLoading(true)
     try {
-      const [txRes, churchList] = await Promise.all([
+      const [txRes, congRes] = await Promise.all([
         financeService.list({ size: 500 }) as any,
-        churchesService.list(),
+        congregationsService.list({ page: 0, size: 200 }),
       ])
       const raw = txRes as any
       setTransactions(Array.isArray(raw?.content || raw?.data || raw) ? raw?.content || raw?.data || raw : [])
-      setChurches(churchList)
+      const congRaw = (congRes as any)?.data
+      const congList = congRaw?.data?.data || congRaw?.data || congRaw?.content || []
+      setCongregations(Array.isArray(congList) ? congList : [])
     } catch { showToast('Falha ao carregar dados.') }
     finally { setLoading(false) }
   }
@@ -101,12 +106,22 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
   const totalRevenue = filtered.filter(t => t.type === 'REVENUE').reduce((s, t) => s + Number(t.amount), 0)
   const totalExpense = filtered.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + Number(t.amount), 0)
 
-  const byChurch = churches.map(c => {
-    const txs = transactions.filter(t => String((t as any).churchId) === String(c.id))
+  // Visão geral: Igreja atual + suas congregações
+  const unidades = [
+    currentChurch ? { id: currentChurch.id, name: currentChurch.name, type: 'igreja' } : null,
+    ...congregations.map(c => ({ id: String(c.id), name: c.name, type: 'congregacao' })),
+  ].filter(Boolean) as { id: string; name: string; type: string }[]
+
+  const byChurch = unidades.map(u => {
+    const txs = transactions.filter(t =>
+      u.type === 'igreja'
+        ? String((t as any).churchId) === String(u.id) && !(t as any).congregationId
+        : String((t as any).congregationId) === String(u.id)
+    )
     const rev = txs.filter(t => t.type === 'REVENUE').reduce((s, t) => s + Number(t.amount), 0)
     const exp = txs.filter(t => t.type === 'EXPENSE').reduce((s, t) => s + Number(t.amount), 0)
     const allConfirmed = txs.length > 0 && txs.every(t => confirmados.has(t.id) || t.status === 'CONFIRMED')
-    return { church: c, revenue: rev, expense: exp, balance: rev - exp, count: txs.length, conciliado: allConfirmed }
+    return { church: u, revenue: rev, expense: exp, balance: rev - exp, count: txs.length, conciliado: allConfirmed }
   }).filter(r => r.count > 0)
 
   function toggleSelect(id: number) {
@@ -190,7 +205,7 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
     const [ano, mesNum] = mes.split('-')
     const mDate = new Date(Number(ano), Number(mesNum) - 1, 1)
     const label = mDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
-    const igrejaNome = fechamentoIgreja === 'Todas' ? 'Todas as Igrejas' : churches.find(c => String(c.id) === fechamentoIgreja)?.name || 'Todas'
+    const igrejaNome = fechamentoIgreja === 'Todas' ? 'Todas as Igrejas' : currentChurch?.name || 'Todas'
     setFechando(true)
     await new Promise(r => setTimeout(r, 800))
     setPeriodosFechados(prev => [...prev, {
@@ -209,7 +224,7 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
   const periodosFiltradosPorAno = periodosFechados.filter(p => p.mes.startsWith(anoFiltro))
   const anosDisponiveis = [...new Set([...periodosFechados.map(p => p.mes.slice(0, 4)), anoFiltro])].sort().reverse()
 
-  // Item 10: resolver URL de imagem
+  // resolver URL de imagem
   function resolveUrl(url?: string) {
     if (!url) return undefined
     if (url.startsWith('http') || url.startsWith('blob:')) return url
@@ -220,15 +235,14 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
     <Layout crumbs={[{ label: 'Contabilidade' }, { label: 'Fechamento Mensal' }]} title="Contabilidade">
       <Tabs tabs={['Visão Geral', 'Lançamentos', 'Fechamento']} active={tab} onChange={setTab} className="mb-6" />
 
-      {/* ── Visão Geral — item 13: sem totais no topo, igrejas compactas com clique ── */}
+      {/* ── Visão Geral ── */}
       {tab === 'Visão Geral' && (
         <div>
           <p className="text-sm text-brand-500 mb-4">
-            Clique em uma igreja para filtrar os lançamentos. Contador vê apenas igrejas atribuídas ao seu perfil.
+            Clique em uma unidade para filtrar os lançamentos.
           </p>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {byChurch.map(r => {
-              const logo = resolveUrl(r.church.logoUrl)
               return (
                 <button
                   key={r.church.id}
@@ -239,18 +253,9 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
                   className="text-left bg-white rounded-xl border border-brand-100 p-4 hover:border-brand-400 hover:shadow-soft transition-all"
                 >
                   <div className="flex items-center gap-3 mb-3">
-                    {logo ? (
-                      <img
-                        src={logo}
-                        alt={r.church.name}
-                        className="h-10 w-10 rounded-lg object-cover border border-brand-100"
-                        onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded-lg bg-brand-800 flex items-center justify-center">
-                        <span className="text-white font-bold text-sm">{r.church.name.charAt(0)}</span>
-                      </div>
-                    )}
+                    <div className="h-10 w-10 rounded-lg bg-brand-800 flex items-center justify-center">
+                      <span className="text-white font-bold text-sm">{r.church.name.charAt(0)}</span>
+                    </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-brand-900 text-sm truncate">{r.church.name}</p>
                       <p className="text-xs text-brand-300">{r.count} lançamentos</p>
@@ -280,14 +285,15 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
         </div>
       )}
 
-      {/* ── Lançamentos — itens 5, 7, 25 ── */}
+      {/* ── Lançamentos ── */}
       {tab === 'Lançamentos' && (
         <>
           <Card className="p-4 mb-4">
             <div className="flex flex-col sm:flex-row gap-3 items-end flex-wrap">
-              <Select label="Igreja" value={churchFilter} onChange={e => setChurchFilter(e.target.value)}>
-                <option value="Todas">Todas as Igrejas</option>
-                {churches.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+              <Select label="Unidade" value={churchFilter} onChange={e => setChurchFilter(e.target.value)}>
+                <option value="Todas">Todas as Unidades</option>
+                {currentChurch && <option value={currentChurch.id}>{currentChurch.name} (Sede)</option>}
+                {congregations.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
               </Select>
               <Select label="Mês" value={mesFilter} onChange={e => setMesFilter(e.target.value)}>
                 <option value="">Todos os meses</option>
@@ -300,7 +306,7 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
               </Select>
               <Select label="Conta" value={contaFilter} onChange={e => setContaFilter(e.target.value)}>
                 <option value="Todas">Todas as Contas</option>
-                {config.contasECaixas.map(c => <option key={c} value={c}>{c}</option>)}
+                {(config?.contasECaixas ?? []).map(c => <option key={c} value={c}>{c}</option>)}
               </Select>
               <Select label="Tipo" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
                 <option value="Todas">Receitas e Despesas</option>
@@ -332,18 +338,24 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
                   <Thead>
                     <tr>
                       <Th><button onClick={toggleSelectAll}>{selectedIds.size === filtered.length && filtered.length > 0 ? <CheckSquare className="h-4 w-4 text-brand-800" /> : <Square className="h-4 w-4 text-brand-300" />}</button></Th>
-                      <Th>Data</Th><Th>Descrição</Th><Th>Igreja</Th><Th>Conta</Th><Th>Tipo</Th><Th>Valor</Th><Th>Status</Th><Th>Comprovante</Th><Th>Ações</Th>
+                      <Th>Data</Th><Th>Descrição</Th><Th>Unidade</Th><Th>Conta</Th><Th>Tipo</Th><Th>Valor</Th><Th>Status</Th><Th>Comprovante</Th><Th>Ações</Th>
                     </tr>
                   </Thead>
                   <tbody>
                     {filtered.map(t => {
-                      const church = churches.find(c => String(c.id) === String((t as any).churchId))
                       const isSelected = selectedIds.has(t.id)
                       const isConfirmado = confirmados.has(t.id) || t.status === 'CONFIRMED'
                       const comprov = comprovantes.get(t.id)
-                      // item 10: resolver URL do comprovante do backend
                       const comprovUrl = comprov?.url || resolveUrl((t as any).attachmentUrl)
                       const comprovName = comprov?.name || (t as any).attachmentUrl?.split('/').pop()
+                      // Buscar nome da unidade
+                      let unidadeNome = '—'
+                      if ((t as any).congregationId) {
+                        const cong = congregations.find(c => String(c.id) === String((t as any).congregationId))
+                        unidadeNome = cong?.name || '—'
+                      } else if ((t as any).churchId) {
+                        unidadeNome = currentChurch?.name || '—'
+                      }
                       return (
                         <Tr key={t.id} className={isSelected ? 'bg-brand-50' : ''}>
                           <Td><button onClick={() => toggleSelect(t.id)}>{isSelected ? <CheckSquare className="h-4 w-4 text-brand-800" /> : <Square className="h-4 w-4 text-brand-200" />}</button></Td>
@@ -353,13 +365,12 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
                               {t.description}
                             </button>
                           </Td>
-                          <Td className="text-brand-500">{church?.name || '—'}</Td>
+                          <Td className="text-brand-500">{unidadeNome}</Td>
                           <Td className="text-brand-500">{(t as any).accountName || 'Caixa Geral'}</Td>
                           <Td><Badge tone={t.type === 'REVENUE' ? 'green' : 'red'}>{t.type === 'REVENUE' ? 'Receita' : 'Despesa'}</Badge></Td>
                           <Td className={`font-semibold ${t.type === 'REVENUE' ? 'text-green-600' : 'text-red-500'}`}>{formatCurrency(Number(t.amount))}</Td>
                           <Td><Badge tone={isConfirmado ? 'green' : 'yellow'}>{isConfirmado ? 'Confirmado' : 'A confirmar'}</Badge></Td>
                           <Td>
-                            {/* item 6/10: exibir comprovante do tesoureiro */}
                             {comprovUrl ? (
                               <a href={comprovUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-brand-700 hover:underline flex items-center gap-1">
                                 <Eye className="h-3 w-3" /> {comprovName ? comprovName.slice(0, 10) + '...' : 'Ver'}
@@ -408,9 +419,10 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
                   <p className="text-sm text-brand-300">Bloqueia lançamentos para o mês selecionado.</p>
                 </div>
               </div>
-              <Select label="Igreja" value={fechamentoIgreja} onChange={e => setFechamentoIgreja(e.target.value)}>
-                <option value="Todas">Todas as Igrejas</option>
-                {churches.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+              <Select label="Unidade" value={fechamentoIgreja} onChange={e => setFechamentoIgreja(e.target.value)}>
+                <option value="Todas">Todas as Unidades</option>
+                {currentChurch && <option value={currentChurch.id}>{currentChurch.name} (Sede)</option>}
+                {congregations.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
               </Select>
               <Input label="Mês de Referência" type="month" value={mes} onChange={e => setMes(e.target.value)} />
               <p className="text-xs text-brand-300">
@@ -452,7 +464,7 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
         </div>
       )}
 
-      {/* Modal: conferência do lançamento — item 5 */}
+      {/* Modal: conferência do lançamento */}
       <Modal
         open={!!viewTx}
         onClose={() => { setViewTx(null); setEditMode(false) }}
@@ -520,7 +532,7 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
               </div>
             )}
 
-            {/* Comprovante do tesoureiro — item 6 */}
+            {/* Comprovante do tesoureiro */}
             <div className="border border-brand-100 rounded-lg p-3">
               <p className="text-sm font-semibold text-brand-900 mb-2">Comprovante (enviado pelo tesoureiro)</p>
               {(() => {
@@ -537,7 +549,7 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
               })()}
             </div>
 
-            {/* Observação do contador — só contador escreve, tesoureiro só lê */}
+            {/* Observação do contador */}
             <div className="border border-blue-100 rounded-lg p-3 bg-blue-50/30">
               <p className="text-sm font-semibold text-brand-900 mb-2">📝 Observações do Contador</p>
               <textarea
@@ -576,16 +588,28 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
 
 // ─── Exportação ───────────────────────────────────────────────────────────────
 function ExportacaoContabil({ showToast }: { showToast: (m: string) => void }) {
+  const { church: currentChurch, isRoot } = useApp()
+  const { config } = useConfig()
   const [dataIni, setDataIni] = useState(`${new Date().getFullYear() - 1}-01-01`)
   const [dataFim, setDataFim] = useState(`${new Date().getFullYear()}-12-31`)
   const [formato, setFormato] = useState('ALTERDATA')
   const [generating, setGenerating] = useState(false)
   const [churchFilter, setChurchFilter] = useState('Todas')
   const [churches, setChurches] = useState<Church[]>([])
+  const [congregations, setCongregations] = useState<Congregation[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loaded, setLoaded] = useState(false)
 
-  useEffect(() => { churchesService.list().then(setChurches).catch(() => {}) }, [])
+  useEffect(() => {
+    // Buscar congregações da igreja atual
+    congregationsService.list({ page: 0, size: 200 })
+      .then((res: any) => {
+        const congRaw = res?.data
+        const congList = congRaw?.data?.data || congRaw?.data || congRaw?.content || []
+        setCongregations(Array.isArray(congList) ? congList : [])
+      })
+      .catch(() => {})
+  }, [])
 
   async function load() {
     setGenerating(true)
@@ -633,10 +657,16 @@ function ExportacaoContabil({ showToast }: { showToast: (m: string) => void }) {
     const f = getFiltered()
     if (!f.length) { showToast('Nenhuma transação no filtro.'); return }
     const rows = f.map(t => {
-      const c = churches.find(ch => String(ch.id) === String((t as any).churchId))
-      return `${t.transactionDate},"${t.description}",${t.type === 'REVENUE' ? 'Receita' : 'Despesa'},"${t.categoryName || ''}","${c?.name || ''}",${t.amount},${t.status}`
+      let unidadeNome = ''
+      if ((t as any).congregationId) {
+        const cong = congregations.find(c => String(c.id) === String((t as any).congregationId))
+        unidadeNome = cong?.name || ''
+      } else {
+        unidadeNome = currentChurch?.name || ''
+      }
+      return `${t.transactionDate},"${t.description}",${t.type === 'REVENUE' ? 'Receita' : 'Despesa'},"${t.categoryName || ''}","${unidadeNome}",${t.amount},${t.status}`
     })
-    const blob = new Blob([['Data,Descrição,Tipo,Categoria,Igreja,Valor,Status', ...rows].join('\r\n')], { type: 'text/csv;charset=utf-8' })
+    const blob = new Blob([['Data,Descrição,Tipo,Categoria,Unidade,Valor,Status', ...rows].join('\r\n')], { type: 'text/csv;charset=utf-8' })
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `lancamentos_${dataIni}_${dataFim}.csv` })
     a.click()
     showToast(`CSV gerado.`)
@@ -662,9 +692,10 @@ function ExportacaoContabil({ showToast }: { showToast: (m: string) => void }) {
                 </button>
               ))}
             </div>
-            <Select label="Igreja" value={churchFilter} onChange={e => setChurchFilter(e.target.value)}>
-              <option value="Todas">Todas as Igrejas</option>
-              {churches.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+            <Select label="Unidade" value={churchFilter} onChange={e => setChurchFilter(e.target.value)}>
+              <option value="Todas">Todas as Unidades</option>
+              {currentChurch && <option value={currentChurch.id}>{currentChurch.name} (Sede)</option>}
+              {congregations.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
             </Select>
             <div className="grid grid-cols-2 gap-4">
               <Input label="Data Inicial" type="date" value={dataIni} onChange={e => setDataIni(e.target.value)} />
@@ -700,7 +731,6 @@ function BackupSistema({ showToast }: { showToast: (m: string) => void }) {
   async function gerarBackup() {
     setFazendo(true)
     await new Promise(r => setTimeout(r, 2000))
-    // Simular download de arquivo de backup
     const conteudo = JSON.stringify({
       geradoEm: new Date().toISOString(),
       versao: '1.0',
@@ -728,7 +758,6 @@ function BackupSistema({ showToast }: { showToast: (m: string) => void }) {
   return (
     <Layout crumbs={[{ label: 'Administração' }, { label: 'Backup' }]} title="Backup do Sistema">
       <div className="max-w-2xl space-y-6">
-        {/* Gerar backup */}
         <Card>
           <CardBody className="pt-6 space-y-4">
             <div className="flex items-center gap-3">
@@ -750,7 +779,6 @@ function BackupSistema({ showToast }: { showToast: (m: string) => void }) {
           </CardBody>
         </Card>
 
-        {/* Restaurar backup */}
         <Card>
           <CardBody className="pt-6 space-y-4">
             <div className="flex items-center gap-3">
@@ -786,7 +814,6 @@ function BackupSistema({ showToast }: { showToast: (m: string) => void }) {
           </CardBody>
         </Card>
 
-        {/* Histórico de backups */}
         <Card>
           <CardHeader><CardTitle>Histórico de Backups</CardTitle></CardHeader>
           <CardBody className="pt-2">
