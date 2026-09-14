@@ -2,6 +2,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppProvider } from '@/lib/AppContext'
 import { ConfigProvider } from '@/lib/ConfigContext'  // <-- ADICIONE ESTA LINHA
+import { AdminExternaProvider } from '@/lib/AdminExternaContext'
 import { ToastProvider } from '@/components/ui/Extras'
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute'
 
@@ -40,7 +41,6 @@ import PerfisPage from '@/pages/configuracoes/PerfisPage'
 import Subscription from '@/pages/Subscription'
 
 import CongregarcoesPage from '@/pages/configuracoes/CongregarcoesPage'
-import AdminIgrejas from '@/pages/admin/AdminIgrejas'
 import AdminAssinatura from '@/pages/admin/AdminAssinatura'
 import AdminAparencia from '@/pages/admin/AdminAparencia'
 import AdminIntegracoes from '@/pages/admin/AdminIntegracoes'
@@ -50,9 +50,28 @@ import PlanoDeContas from '@/pages/contabilidade/PlanoDeContas'
 import Chamados from '@/pages/admin/Chamados'
 import ContabilidadeConfiguracoes from '@/pages/contabilidade/ContabilidadeConfiguracoes'
 
+// Administração Externa (exclusiva ROOT)
+import PainelGeral from '@/pages/admin-externa/PainelGeral'
+import Igrejas from '@/pages/admin-externa/Igrejas'
+import IgrejaDetalhe from '@/pages/admin-externa/IgrejaDetalhe'
+import Congregacoes from '@/pages/admin-externa/Congregacoes'
+import Usuarios from '@/pages/admin-externa/Usuarios'
+import Documentos from '@/pages/admin-externa/Documentos'
+import Modulos from '@/pages/admin-externa/Modulos'
+import Auditoria from '@/pages/admin-externa/Auditoria'
+import ConfiguracoesGlobais from '@/pages/admin-externa/ConfiguracoesGlobais'
+
 
 function withChurch(el: React.ReactNode) {
   return <ProtectedRoute requireChurch>{el}</ProtectedRoute>
+}
+
+function withAdminExterna(el: React.ReactNode) {
+  return (
+    <ProtectedRoute requireRoot>
+      <AdminExternaProvider>{el}</AdminExternaProvider>
+    </ProtectedRoute>
+  )
 }
 
 export default function App() {
@@ -106,7 +125,6 @@ export default function App() {
             <Route path="/contabilidade/configuracoes" element={withChurch(<ContabilidadeConfiguracoes />)} />
 
             <Route path="/configuracoes/congregacoes" element={withChurch(<CongregarcoesPage />)} />
-            <Route path="/admin/igrejas" element={withChurch(<AdminIgrejas />)} />
             <Route path="/admin/assinatura" element={withChurch(<AdminAssinatura />)} />
             <Route path="/admin/aparencia" element={withChurch(<AdminAparencia />)} />
             <Route path="/admin/integracoes" element={withChurch(<AdminIntegracoes />)} />
@@ -114,6 +132,17 @@ export default function App() {
             <Route path="/contabilidade/demonstracoes" element={withChurch(<Demonstracoes />)} />
             <Route path="/contabilidade/plano-de-contas" element={withChurch(<PlanoDeContas />)} />
             <Route path="/suporte/chamados" element={withChurch(<Chamados />)} />
+
+            {/* Administração Externa — exclusiva ROOT, sem exigir Igreja selecionada */}
+            <Route path="/admin-externa/painel" element={withAdminExterna(<PainelGeral />)} />
+            <Route path="/admin-externa/igrejas" element={withAdminExterna(<Igrejas />)} />
+            <Route path="/admin-externa/igrejas/:id" element={withAdminExterna(<IgrejaDetalhe />)} />
+            <Route path="/admin-externa/congregacoes" element={withAdminExterna(<Congregacoes />)} />
+            <Route path="/admin-externa/usuarios" element={withAdminExterna(<Usuarios />)} />
+            <Route path="/admin-externa/documentos" element={withAdminExterna(<Documentos />)} />
+            <Route path="/admin-externa/modulos" element={withAdminExterna(<Modulos />)} />
+            <Route path="/admin-externa/auditoria" element={withAdminExterna(<Auditoria />)} />
+            <Route path="/admin-externa/configuracoes" element={withAdminExterna(<ConfiguracoesGlobais />)} />
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

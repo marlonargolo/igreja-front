@@ -74,17 +74,17 @@ const navPrincipal: NavItem[] = [
   },
 ]
 
+// Administração desta Igreja apenas — a Administração Externa (global, todas
+// as Igrejas) nunca aparece aqui; ela é acessada exclusivamente pela tela de
+// seleção de Igrejas, através do botão exclusivo do ROOT.
 const navAdmin: NavItem[] = [
   {
     label: 'Administração', icon: Building2,
     children: [
-      { to: '/admin/igrejas', label: 'Cadastro de Igrejas' },
       { to: '/admin/assinatura', label: 'Assinatura' },
       { to: '/admin/aparencia', label: 'Aparência' },
       { to: '/admin/integracoes', label: 'Integrações' },
       { to: '/admin/backup', label: 'Backup' },
-      
-
     ],
   },
 ]

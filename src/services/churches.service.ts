@@ -15,6 +15,11 @@ export interface Church {
   logoUrl?: string
   status: string
   pastorId?: number
+  planId?: number
+  createdAt?: string
+  adminName?: string
+  adminEmail?: string
+  adminPassword?: string
 }
 
 export const FILES_BASE = 'http://2.24.80.229:3000'
@@ -28,12 +33,30 @@ export function resolveLogoUrl(url?: string): string | undefined {
   return `${FILES_BASE}${url}`
 }
 
+export interface ChurchListParams {
+  page?: number
+  size?: number
+  search?: string
+  city?: string
+  state?: string
+  status?: string
+  planId?: string | number
+  dateFrom?: string
+  dateTo?: string
+}
+
 export const churchesService = {
-  async list(params: { page?: number; size?: number; search?: string } = {}) {
+  async list(params: ChurchListParams = {}) {
     const res = await http.get<ApiSuccess<any>>('/churches', {
       page: params.page ?? 0,
       size: params.size ?? 50,
       search: params.search,
+      city: params.city,
+      state: params.state,
+      status: params.status,
+      planId: params.planId,
+      dateFrom: params.dateFrom,
+      dateTo: params.dateTo,
     })
     const raw = res.data
     const list = raw?.data || raw?.content || raw || []
