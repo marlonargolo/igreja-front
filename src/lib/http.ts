@@ -203,16 +203,18 @@ export const http = {
   delete: <T>(path: string) =>
     request<T>(path, { method: 'DELETE' }),
 
-  upload: async <T>(path: string, file: File, fieldName = 'file'): Promise<T> => {
+  upload: async <T>(path: string, file: File, fieldName = 'file', fields: Record<string, string> = {}): Promise<T> => {
     const access = tokenStore.getAccess()
     const formData = new FormData()
     formData.append(fieldName, file)
+    Object.entries(fields).forEach(([key, value]) => formData.append(key, value))
 
     const res = await fetch(buildUrl(path), {
       method: 'POST',
       headers: {
         ...(access ? { Authorization: `Bearer ${access}` } : {}),
         ...buildRootHeaders(),
+        ...buildCongregationHeaders(),
       },
       body: formData,
     })

@@ -1,6 +1,6 @@
 // src/services/index.ts
 export { authService, type AuthUser, type LoginPayload } from './auth.service'
-export { membersService, type Member, type CreateMemberPayload, type MemberTransfer } from './members.service'
+export { membersService, type Member, type CreateMemberPayload, type MemberTransfer, type MemberDocument } from './members.service'
 export { congregationsService, type Congregation } from './congregations.service'
 export { financeService, type Transaction, type CreateTransactionPayload } from './finance.service'
 export { assetsService, type Asset, type CreateAssetPayload } from './assets.service'

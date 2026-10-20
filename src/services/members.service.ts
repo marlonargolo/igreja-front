@@ -24,6 +24,18 @@ export interface Member {
   status: string
 }
 
+export interface MemberDocument {
+  id: number
+  memberId: number
+  documentType: string
+  fileName: string
+  fileUrl: string
+  fileType: string
+  fileSize: number
+  uploadedBy: number
+  createdAt: string
+}
+
 export interface MemberListParams {
   page?: number
   size?: number
@@ -100,6 +112,22 @@ export const membersService = {
       'file'
     )
     return res?.data?.avatarUrl || ''
+  },
+
+  async getDocuments(memberId: number): Promise<MemberDocument[]> {
+    const res = await http.get<ApiSuccess<MemberDocument[]>>(`/members/${memberId}/documents`)
+    return res.data
+  },
+
+  async uploadDocument(memberId: number, file: File, documentType: string) {
+    const res = await http.upload<ApiSuccess<MemberDocument>>(
+      `/members/${memberId}/documents`, file, 'file', { documentType },
+    )
+    return res.data
+  },
+
+  async deleteDocument(memberId: number, documentId: number) {
+    await http.delete(`/members/${memberId}/documents/${documentId}`)
   },
 
   // Transferência de membro entre Congregações da mesma Igreja.

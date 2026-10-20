@@ -40,7 +40,7 @@ export default function Accounting() {
 }
 
 function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
-  const { config } = useConfig()
+  const { contasECaixas } = useConfig()
   const { church: currentChurch, isRoot } = useApp()
   const [tab, setTab] = useState('Visão Geral')
   const [transactions, setTransactions] = useState<Transaction[]>([])
@@ -306,7 +306,7 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
               </Select>
               <Select label="Conta" value={contaFilter} onChange={e => setContaFilter(e.target.value)}>
                 <option value="Todas">Todas as Contas</option>
-                {(config?.contasECaixas ?? []).map(c => <option key={c} value={c}>{c}</option>)}
+                {contasECaixas.map(c => <option key={c} value={c}>{c}</option>)}
               </Select>
               <Select label="Tipo" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
                 <option value="Todas">Receitas e Despesas</option>
@@ -589,7 +589,7 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
 // ─── Exportação ───────────────────────────────────────────────────────────────
 function ExportacaoContabil({ showToast }: { showToast: (m: string) => void }) {
   const { church: currentChurch, isRoot } = useApp()
-  const { config } = useConfig()
+  const { contasECaixas } = useConfig()
   const [dataIni, setDataIni] = useState(`${new Date().getFullYear() - 1}-01-01`)
   const [dataFim, setDataFim] = useState(`${new Date().getFullYear()}-12-31`)
   const [formato, setFormato] = useState('ALTERDATA')
