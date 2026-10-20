@@ -47,8 +47,8 @@ export default function ConfiguracoesGlobais() {
         <Card className="p-8">
           <div className="flex flex-col items-center text-center gap-2 text-brand-400">
             <AlertCircle className="h-8 w-8 text-amber-400" />
-            <p className="font-semibold text-brand-900">Endpoint de configurações globais indisponível.</p>
-            <p className="text-sm">Assim que o backend expuser <code className="text-xs bg-brand-50 px-1.5 py-0.5 rounded">/settings/global</code>, esta tela passará a exibir e permitir a edição dos parâmetros.</p>
+            <p className="font-semibold text-brand-900">Não foi possível carregar as configurações globais.</p>
+            <p className="text-sm">Verifique sua conexão e tente novamente.</p>
           </div>
         </Card>
       ) : (

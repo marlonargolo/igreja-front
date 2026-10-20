@@ -4,7 +4,7 @@ import { Card } from './Card'
 import { cn } from '@/lib/format'
 
 export function MetricCard({
-  label, value, icon, trend, trendUp = true, iconBg = 'bg-brand-100 text-brand-800',
+  label, value, icon, trend, trendUp = true, iconBg = 'bg-brand-100 text-brand-800', subtext,
 }: {
   label: string
   value: string
@@ -12,6 +12,8 @@ export function MetricCard({
   trend?: string
   trendUp?: boolean
   iconBg?: string
+  /** Linha extra neutra abaixo do valor principal (ex.: "+ R$ 500 pendente de confirmação"). */
+  subtext?: string
 }) {
   return (
     <Card className="p-5 flex flex-col gap-3 min-w-[180px]">
@@ -25,6 +27,9 @@ export function MetricCard({
           {trendUp ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
           {trend}
         </div>
+      )}
+      {subtext && (
+        <div className="text-xs font-medium text-amber-600">{subtext}</div>
       )}
     </Card>
   )

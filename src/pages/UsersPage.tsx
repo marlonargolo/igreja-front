@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, Edit2, UserX, UserCheck, ShieldCheck, Loader2, Check } from 'lucide-react'
+import { Plus, Edit2, UserX, UserCheck, ShieldCheck, Loader2, Check, Building2 } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Table, Thead, Tr, Th, Td } from '@/components/ui/Table'
@@ -104,6 +104,7 @@ export default function UsersPage() {
   const canCreate     = isRoot || hasPermission('USER_CREATE')
   const canEdit       = isRoot || hasPermission('USER_UPDATE')
   const canManagePerms = isRoot || hasPermission('USER_ROLE_MANAGE')
+  const canManageCongAccess = isRoot || hasPermission('USER_CHURCH_TRANSFER')
 
   const [users, setUsers]             = useState<ApiUser[]>([])
   const [availableRoles, setAvailableRoles] = useState<ApiRole[]>([])
@@ -127,6 +128,13 @@ export default function UsersPage() {
   const [selectedPerms, setSelectedPerms] = useState<Set<string>>(new Set())
   const [permLoading, setPermLoading]     = useState(false)
   const [permSaving, setPermSaving]       = useState(false)
+
+  // Modal congregações vinculadas
+  const [congOpen, setCongOpen]                 = useState(false)
+  const [congModalUser, setCongModalUser]       = useState<ApiUser | null>(null)
+  const [selectedCongIds, setSelectedCongIds]   = useState<Set<number>>(new Set())
+  const [congModalLoading, setCongModalLoading] = useState(false)
+  const [congModalSaving, setCongModalSaving]   = useState(false)
 
   // ── Carga ──────────────────────────────────────────────────────────────────
 
@@ -271,6 +279,41 @@ export default function UsersPage() {
     } finally { setPermSaving(false) }
   }
 
+  // ── Modal congregações vinculadas ───────────────────────────────────────────
+
+  async function openCongregations(u: ApiUser) {
+    setCongModalUser(u)
+    setCongOpen(true)
+    setCongModalLoading(true)
+    try {
+      const res = await http.get<any>(`/users/${u.id}/congregations`)
+      const raw = res?.data
+      const list: any[] = raw?.data || raw || []
+      setSelectedCongIds(new Set(list.map((c: any) => Number(c.id))))
+    } catch { showToast('Falha ao carregar congregações vinculadas.') }
+    finally { setCongModalLoading(false) }
+  }
+
+  function toggleCongregation(id: number) {
+    setSelectedCongIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  async function saveCongregations() {
+    if (!congModalUser) return
+    setCongModalSaving(true)
+    try {
+      await http.put(`/users/${congModalUser.id}/congregations`, Array.from(selectedCongIds))
+      showToast(`Congregações de ${congModalUser.name} atualizadas.`)
+      setCongOpen(false)
+    } catch (err: any) {
+      showToast(err?.response?.data?.message || 'Falha ao salvar congregações.')
+    } finally { setCongModalSaving(false) }
+  }
+
   // Organizar permissões disponíveis por módulo
   const permsByModule = useMemo(() => {
     const result: Record<string, PermissionItem[]> = {}
@@ -312,7 +355,7 @@ export default function UsersPage() {
               <Thead>
                 <tr>
                   <Th>Nome</Th><Th>E-mail</Th><Th>Perfil</Th><Th>Status</Th>
-                  {(canEdit || canManagePerms) && <Th>Ações</Th>}
+                  {(canEdit || canManagePerms || canManageCongAccess) && <Th>Ações</Th>}
                 </tr>
               </Thead>
               <tbody>
@@ -332,7 +375,7 @@ export default function UsersPage() {
                         {u.active ? 'Ativo' : 'Inativo'}
                       </Badge>
                     </Td>
-                    {(canEdit || canManagePerms) && (
+                    {(canEdit || canManagePerms || canManageCongAccess) && (
                       <Td>
                         <div className="flex gap-1">
                           {canEdit && (
@@ -346,6 +389,13 @@ export default function UsersPage() {
                               className="p-1.5 rounded hover:bg-purple-50 text-purple-400"
                               title="Gerenciar Permissões">
                               <ShieldCheck className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          {canManageCongAccess && (
+                            <button onClick={() => openCongregations(u)}
+                              className="p-1.5 rounded hover:bg-blue-50 text-blue-400"
+                              title="Vincular Congregações">
+                              <Building2 className="h-3.5 w-3.5" />
                             </button>
                           )}
                           <button onClick={() => toggleActive(u)}
@@ -396,17 +446,21 @@ export default function UsersPage() {
               onChange={e => setForm({ ...form, password: e.target.value })} required />
           )}
 
-          {/* Perfil: texto livre com sugestões dinâmicas */}
-          <div>
-            <label className="block text-sm font-semibold text-brand-900 mb-1.5">Perfil de Acesso</label>
-            <input list="roles-list" value={form.roleName}
-              onChange={e => setForm({ ...form, roleName: e.target.value })}
-              placeholder="Digite ou selecione um perfil..."
-              className="w-full rounded-lg border border-brand-100 bg-white px-3.5 py-2.5 text-sm text-brand-900 placeholder:text-brand-300 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" />
-            <datalist id="roles-list">
-              {availableRoles.map(r => <option key={r.id} value={r.name} />)}
-            </datalist>
-          </div>
+          {/* Perfil: texto livre com sugestões dinâmicas — só na criação.
+              Na edição esse campo já não tinha efeito nenhum (o backend só lê
+              roleIds, nunca o nome livre enviado daqui), por isso foi removido. */}
+          {!editing && (
+            <div>
+              <label className="block text-sm font-semibold text-brand-900 mb-1.5">Perfil de Acesso</label>
+              <input list="roles-list" value={form.roleName}
+                onChange={e => setForm({ ...form, roleName: e.target.value })}
+                placeholder="Digite ou selecione um perfil..."
+                className="w-full rounded-lg border border-brand-100 bg-white px-3.5 py-2.5 text-sm text-brand-900 placeholder:text-brand-300 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" />
+              <datalist id="roles-list">
+                {availableRoles.map(r => <option key={r.id} value={r.name} />)}
+              </datalist>
+            </div>
+          )}
 
           {/* ROOT: seleciona a Igreja */}
           {!editing && isRoot && (
@@ -550,6 +604,58 @@ export default function UsersPage() {
                 </div>
               )
             })}
+          </div>
+        )}
+      </Modal>
+
+      {/* ── Modal congregações vinculadas ── */}
+      <Modal open={congOpen} onClose={() => setCongOpen(false)}
+        title={`Congregações — ${congModalUser?.name}`}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCongOpen(false)}>Cancelar</Button>
+            <Button onClick={saveCongregations} disabled={congModalSaving}>
+              {congModalSaving
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</>
+                : <><Building2 className="h-4 w-4" /> Salvar Congregações</>}
+            </Button>
+          </>
+        }
+      >
+        {congModalLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-7 w-7 animate-spin text-brand-300" />
+          </div>
+        ) : (
+          <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
+            <p className="text-xs text-brand-400 mb-4">
+              Marque as congregações, além da Igreja principal, que este usuário poderá acessar.
+            </p>
+            {congregations.length === 0 ? (
+              <p className="text-sm text-brand-300 py-4 text-center">Nenhuma congregação cadastrada nesta Igreja.</p>
+            ) : (
+              congregations.map(c => (
+                <label key={c.id}
+                  className="flex items-center gap-2.5 cursor-pointer py-2 px-2 rounded-lg hover:bg-brand-50 group">
+                  <div onClick={() => toggleCongregation(c.id)}
+                    className={cn(
+                      'h-4 w-4 rounded border flex items-center justify-center shrink-0 transition-colors cursor-pointer',
+                      selectedCongIds.has(c.id)
+                        ? 'bg-brand-800 border-brand-800'
+                        : 'bg-white border-brand-200'
+                    )}>
+                    {selectedCongIds.has(c.id) && <Check className="h-2.5 w-2.5 text-white" />}
+                  </div>
+                  <span onClick={() => toggleCongregation(c.id)}
+                    className={cn(
+                      'text-sm cursor-pointer',
+                      selectedCongIds.has(c.id) ? 'text-brand-900 font-medium' : 'text-brand-500'
+                    )}>
+                    {c.name}
+                  </span>
+                </label>
+              ))
+            )}
           </div>
         )}
       </Modal>

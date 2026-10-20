@@ -11,12 +11,13 @@ import { ChevronRight, Cloud, MapPin, Loader2, LogOut, Building2, Settings } fro
 import { Badge } from '@/components/ui/Badge'
 import { useApp } from '@/lib/AppContext'
 import { type Church } from '@/services/churches.service'
+import { congregationsService } from '@/services/congregations.service'
 import { useToast } from '@/components/ui/Extras'
 import { http, rootContext } from '@/lib/http'
 
 export default function ChurchSelection() {
   const navigate = useNavigate()
-  const { user, setChurch, logout } = useApp()
+  const { user, setChurch, enterCongregation, exitCongregation, logout } = useApp()
   const showToast = useToast()
 
   const [churches, setChurches] = useState<Church[]>([])
@@ -26,7 +27,7 @@ export default function ChurchSelection() {
 
   useEffect(() => {
     http.get<any>('/churches/my')
-      .then(res => {
+      .then(async res => {
         const raw = res?.data
         const list: Church[] = Array.isArray(raw?.data) ? raw.data
                              : Array.isArray(raw)       ? raw
@@ -36,7 +37,24 @@ export default function ChurchSelection() {
         // Uma única igreja disponível → entrar direto (apenas não-ROOT)
         if (list.length === 1 && !isRoot) {
           const c = list[0]
-          setChurch({ id: String(c.id), name: c.name, city: c.city || '', state: c.state || '' })
+          setChurch({ id: String(c.id), name: c.name, city: c.city || '', state: c.state || '', logoUrl: c.logoUrl || null })
+
+          // Usuário vinculado a uma Congregação específica: não há nada para
+          // escolher — resolve a Congregação também, para o restante do app
+          // (Sidebar, cabeçalhos) saber que o escopo é a Congregação, não a Igreja.
+          if (user?.congregationId) {
+            try {
+              const cong = await congregationsService.get(user.congregationId)
+              enterCongregation({
+                id: String(cong.id),
+                name: cong.name,
+                city: cong.city || '',
+                state: cong.state || '',
+                churchName: cong.churchName || '',
+              }, { exitable: false })
+            } catch { /* segue mesmo se falhar */ }
+          }
+
           navigate('/dashboard', { replace: true })
         }
       })
@@ -45,7 +63,10 @@ export default function ChurchSelection() {
   }, [])
 
   function select(c: Church) {
-    setChurch({ id: String(c.id), name: c.name, city: c.city || '', state: c.state || '' })
+    // Escolher uma Igreja aqui é sempre uma troca explícita de contexto —
+    // nunca pode manter uma Congregação "entrada" de uma sessão anterior.
+    exitCongregation()
+    setChurch({ id: String(c.id), name: c.name, city: c.city || '', state: c.state || '', logoUrl: c.logoUrl || null })
     navigate('/dashboard')
   }
 

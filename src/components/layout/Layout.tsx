@@ -6,11 +6,12 @@ interface LayoutProps {
   crumbs: { label: string; to?: string }[]
   title: string
   searchPlaceholder?: string
+  hideSearch?: boolean
   action?: { label: string; icon?: ReactNode; onClick?: () => void }
   children: ReactNode
 }
 
-export function Layout({ crumbs, title, searchPlaceholder, action, children }: LayoutProps) {
+export function Layout({ crumbs, title, searchPlaceholder, hideSearch, action, children }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -27,6 +28,7 @@ export function Layout({ crumbs, title, searchPlaceholder, action, children }: L
           crumbs={crumbs}
           title={title}
           searchPlaceholder={searchPlaceholder}
+          hideSearch={hideSearch}
           action={action}
           onOpenMobile={() => setMobileOpen(true)}
         />

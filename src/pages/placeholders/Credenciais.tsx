@@ -53,11 +53,20 @@ export default function Credenciais() {
     const win = window.open('', '_blank', 'width=900,height=700')
     if (!win) return
 
+    const logo = church?.logoUrl
+      ? (church.logoUrl.startsWith('http')
+          ? church.logoUrl
+          : `${import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://2.24.80.229:3000'}${church.logoUrl}`)
+      : null
+
     const cards = toPrint.map(m => `
       <div class="card">
         <div class="header">
-          <h2>${church?.name || 'IgrejaHub'}</h2>
-          <p>Credencial de Membro</p>
+          ${logo ? `<img class="church-logo" src="${logo}" onerror="this.style.display='none'" />` : ''}
+          <div class="header-text">
+            <h2>${church?.name || 'IgrejaHub'}</h2>
+            <p>Credencial de Membro</p>
+          </div>
         </div>
         <div class="body">
                   <img class="avatar" src="${resolveLogoUrl(m.avatarUrl) || `https://ui-avatars.com/api/?name=${encodeURIComponent(m.name)}&background=1E3A5F&color=fff`}" />
@@ -83,7 +92,8 @@ export default function Credenciais() {
         body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
         .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
         .card { background: white; border: 2px solid #1E3A5F; border-radius: 12px; padding: 0; overflow: hidden; break-inside: avoid; }
-        .header { background: #1E3A5F; color: white; padding: 12px 16px; }
+        .header { background: #1E3A5F; color: white; padding: 12px 16px; display: flex; align-items: center; gap: 10px; }
+        .header .church-logo { width: 32px; height: 32px; border-radius: 6px; object-fit: cover; background: white; shrink: 0; }
         .header h2 { font-size: 14px; margin: 0; }
         .header p { font-size: 11px; opacity: 0.8; margin: 2px 0 0; }
         .body { display: flex; gap: 12px; padding: 14px 16px; align-items: flex-start; }

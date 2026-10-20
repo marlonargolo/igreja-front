@@ -35,10 +35,6 @@ export default function Despesas() {
   const [editingId,    setEditingId]    = useState<number | null>(null)
   const [comprovante,  setComprovante]  = useState<File | null>(null)
 
-  // "Nova categoria" digitada inline
-  const [newCatName, setNewCatName] = useState('')
-  const [addingCat,  setAddingCat]  = useState(false)
-
   const [form, setForm] = useState({
     description: '', amount: '',
     dateLancamento: new Date().toISOString().split('T')[0],
@@ -79,29 +75,6 @@ export default function Despesas() {
     }
   }
 
-  /** Criar nova categoria EXPENSE inline e selecionar ela */
-  async function handleAddCategory() {
-    if (!newCatName.trim()) return
-    setAddingCat(true)
-    try {
-      const res = await http.post<any>('/finance/categories', {
-        name: newCatName.trim(),
-        type: 'EXPENSE',
-        color: '#ef4444',
-      })
-      const raw = res?.data
-      const created: Category = raw?.data || raw
-      setCategories(prev => [...prev, created])
-      setForm(f => ({ ...f, categoryId: String(created.id) }))
-      setNewCatName('')
-      showToast(`Categoria "${created.name}" adicionada.`)
-    } catch (err: any) {
-      showToast(err?.response?.data?.message || 'Falha ao criar categoria.')
-    } finally {
-      setAddingCat(false)
-    }
-  }
-
   const total   = useMemo(() => transactions.reduce((s, t) => s + Number(t.amount), 0), [transactions])
   const pending = useMemo(() => transactions.filter(t => t.status === 'PENDING').length,  [transactions])
 
@@ -116,7 +89,6 @@ export default function Despesas() {
     })
     setComprovante(null)
     setEditingId(null)
-    setNewCatName('')
   }
 
   function openNew() { resetForm(); setOpen(true) }
@@ -240,29 +212,13 @@ export default function Despesas() {
         }>
         <form onSubmit={handleSubmit} className="space-y-4">
 
-          {/* Categoria: select existente + campo inline para criar nova */}
-          <div>
-            <Select label="Categoria" value={form.categoryId}
-              onChange={e => setForm({ ...form, categoryId: e.target.value })}>
-              <option value="">— Selecione a categoria —</option>
-              {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-            </Select>
-            {/* Adicionar nova categoria inline */}
-            <div className="flex gap-2 mt-2">
-              <input
-                type="text"
-                placeholder="Ou digite nova categoria..."
-                value={newCatName}
-                onChange={e => setNewCatName(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleAddCategory() } }}
-                className="flex-1 text-sm px-3 py-2 rounded-lg border border-brand-100 outline-none focus:border-brand-500 placeholder:text-brand-300"
-              />
-              <Button type="button" size="sm" variant="outline"
-                onClick={handleAddCategory} disabled={addingCat || !newCatName.trim()}>
-                {addingCat ? '...' : '+ Adicionar'}
-              </Button>
-            </div>
-          </div>
+          {/* Categoria: a criação de categorias é feita pela Contabilidade
+              (Plano de Contas), para garantir o mapeamento contábil correto. */}
+          <Select label="Categoria" value={form.categoryId}
+            onChange={e => setForm({ ...form, categoryId: e.target.value })}>
+            <option value="">— Selecione a categoria —</option>
+            {categories.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+          </Select>
 
           {/* Conta */}
           {!editingId && (
@@ -286,7 +242,7 @@ export default function Despesas() {
           {/* Comprovante — sempre visível */}
           <div>
             <p className="text-sm font-semibold text-brand-900 mb-1.5 flex items-center gap-1.5">
-              <Paperclip className="h-3.5 w-3.5" /> Comprovante (opcional)
+              <Paperclip className="h-3.5 w-3.5" /> Comprovante
             </p>
             <input type="file" accept="image/*,application/pdf"
               onChange={e => setComprovante(e.target.files?.[0] || null)}

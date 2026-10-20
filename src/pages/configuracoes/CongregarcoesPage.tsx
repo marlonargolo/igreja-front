@@ -9,7 +9,8 @@
  * - Criação: churchId preenchido automaticamente pelo backend (Igreja do criador)
  */
 import { useEffect, useState } from 'react'
-import { Plus, MapPin, Phone, Mail, Edit2, Trash2, Upload, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Plus, MapPin, Phone, Mail, Edit2, Trash2, Upload, X, LogIn } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
@@ -19,7 +20,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Extras'
 import { useApp } from '@/lib/AppContext'
 import { congregationsService, type Congregation } from '@/services/congregations.service'
-import { fetchAddressByCep } from '@/services/externalApis.service'
+import { fetchAddressByCep, fetchCompanyByCnpj } from '@/services/externalApis.service'
 
 const FILES_BASE = 'http://2.24.80.229:3000'
 
@@ -31,9 +32,14 @@ function resolveImg(url?: string | null): string | undefined {
 
 export default function CongregarcoesPage() {
   const showToast = useToast()
-  const { user, church, hasPermission, isRoot } = useApp()
+  const navigate = useNavigate()
+  const { user, church, hasPermission, isRoot, enterCongregation } = useApp()
 
   const canManage = isRoot || hasPermission('SETTINGS_UPDATE')
+  // Restrito a Congregações vinculadas (accessMainChurch=false): só pode ver/entrar
+  // nas que estão na própria lista — nunca nas demais da mesma Igreja, mesmo que
+  // o backend devolva todas aqui (isolamento real é aplicado na hora de "Entrar").
+  const isRestricted = !isRoot && user?.accessMainChurch === false
 
   const [congregations, setCongregations] = useState<Congregation[]>([])
   const [loading, setLoading] = useState(true)
@@ -47,7 +53,7 @@ export default function CongregarcoesPage() {
 
   const [form, setForm] = useState({
     name: '', city: '', state: '', address: '',
-    phone: '', email: '', cep: '',
+    phone: '', email: '', cep: '', cnpj: '',
   })
 
   useEffect(() => { load() }, [church?.id])
@@ -69,6 +75,10 @@ export default function CongregarcoesPage() {
     }
   }
 
+  const visibleCongregations = isRestricted
+    ? congregations.filter(c => user?.linkedCongregationIds?.includes(c.id))
+    : congregations
+
   async function handleCepSearch(cep: string) {
     try {
       const data = await fetchAddressByCep(cep)
@@ -79,6 +89,21 @@ export default function CongregarcoesPage() {
       }))
       showToast('CEP encontrado!')
     } catch (err: any) { showToast(err.message || 'Erro ao buscar CEP') }
+  }
+
+  async function handleCnpjSearch(cnpj: string) {
+    try {
+      const data = await fetchCompanyByCnpj(cnpj)
+      setForm(prev => ({
+        ...prev,
+        name: data.fantasyName || data.name || prev.name,
+        city: data.city || prev.city, state: data.state || prev.state,
+        address: data.street ? `${data.street}${data.number ? `, ${data.number}` : ''}` : prev.address,
+        phone: data.phone || prev.phone, email: data.email || prev.email,
+        cnpj: data.cnpj || prev.cnpj, cep: data.cep || prev.cep,
+      }))
+      showToast('CNPJ encontrado!')
+    } catch (err: any) { showToast(err.message || 'Erro ao buscar CNPJ') }
   }
 
   function handleLogoChange(file: File | null) {
@@ -94,7 +119,7 @@ export default function CongregarcoesPage() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', city: '', state: '', address: '', phone: '', email: '', cep: '' })
+    setForm({ name: '', city: '', state: '', address: '', phone: '', email: '', cep: '', cnpj: '' })
     setLogoFile(null); setLogoPreview(null)
     setOpenNew(true)
   }
@@ -102,7 +127,7 @@ export default function CongregarcoesPage() {
   function openEdit(c: Congregation) {
     setEditing(c)
     setForm({ name: c.name, city: c.city || '', state: c.state || '',
-      address: c.address || '', phone: '', email: '', cep: '' })
+      address: c.address || '', phone: '', email: '', cep: '', cnpj: '' })
     setLogoFile(null)
     setLogoPreview(resolveImg(c.imageUrl) || null)
     setOpenNew(true)
@@ -137,6 +162,17 @@ export default function CongregarcoesPage() {
     } finally { setSaving(false) }
   }
 
+  function handleEnter(c: Congregation) {
+    enterCongregation({
+      id: String(c.id),
+      name: c.name,
+      city: c.city || '',
+      state: c.state || '',
+      churchName: church?.name || '',
+    })
+    navigate('/dashboard')
+  }
+
   async function handleDelete(c: Congregation) {
     if (!confirm(`Desativar a congregação "${c.name}"?`)) return
     try {
@@ -158,16 +194,22 @@ export default function CongregarcoesPage() {
     >
       {loading ? (
         <div className="flex justify-center py-20 text-brand-300">Carregando...</div>
-      ) : congregations.length === 0 ? (
+      ) : visibleCongregations.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-2 text-brand-300">
-          <p>Nenhuma congregação cadastrada.</p>
-          {canManage && (
+          <p>
+            {isRestricted
+              ? 'Nenhuma congregação vinculada ao seu usuário ainda.'
+              : 'Nenhuma congregação cadastrada.'}
+          </p>
+          {isRestricted ? (
+            <p className="text-sm">Fale com um administrador para vincular você a uma congregação.</p>
+          ) : canManage && (
             <p className="text-sm">Clique em "Nova Congregação" para adicionar.</p>
           )}
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {congregations.map(c => {
+          {visibleCongregations.map(c => {
             const img = resolveImg(c.imageUrl)
             return (
               <Card key={c.id} className="h-full">
@@ -193,16 +235,21 @@ export default function CongregarcoesPage() {
                       {[c.city, c.state].filter(Boolean).join(', ')}
                     </p>
                   )}
-                  {canManage && (
-                    <div className="flex gap-2 mt-3 pt-3 border-t border-brand-100">
-                      <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
-                        <Edit2 className="h-3.5 w-3.5" /> Editar
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => handleDelete(c)}>
-                        <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                      </Button>
-                    </div>
-                  )}
+                  <div className="flex gap-2 mt-3 pt-3 border-t border-brand-100">
+                    <Button size="sm" onClick={() => handleEnter(c)}>
+                      <LogIn className="h-3.5 w-3.5" /> Entrar
+                    </Button>
+                    {canManage && (
+                      <>
+                        <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
+                          <Edit2 className="h-3.5 w-3.5" /> Editar
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => handleDelete(c)}>
+                          <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </CardBody>
               </Card>
             )
@@ -225,6 +272,23 @@ export default function CongregarcoesPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input label="Nome da Congregação" value={form.name}
             onChange={e => setForm({ ...form, name: e.target.value })} required />
+
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <Input label="CNPJ" value={form.cnpj}
+                onChange={e => {
+                  const value = e.target.value
+                  setForm({ ...form, cnpj: value })
+                  if (value.replace(/\D/g, '').length === 14) handleCnpjSearch(value)
+                }}
+                placeholder="00.000.000/0001-00" />
+            </div>
+            <Button type="button" variant="outline" className="mt-6"
+              onClick={() => form.cnpj && handleCnpjSearch(form.cnpj)}
+              disabled={!form.cnpj || form.cnpj.replace(/\D/g, '').length !== 14}>
+              Buscar CNPJ
+            </Button>
+          </div>
 
           <div className="flex gap-2">
             <div className="flex-1">

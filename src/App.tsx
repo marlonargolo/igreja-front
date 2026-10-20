@@ -18,6 +18,7 @@ import SecretariaTransferencias from '@/pages/placeholders/SecretariaTransferenc
 import Credenciais from '@/pages/placeholders/Credenciais'
 import RelatoriosSecretaria from '@/pages/placeholders/RelatoriosSecretaria'
 import SecretariaConfiguracoes from '@/pages/placeholders/SecretariaConfiguracoes'
+import SecretariaDocumentos from '@/pages/admin/SecretariaDocumentos'
 
 // Tesouraria
 import Finance from '@/pages/Finance'
@@ -102,6 +103,7 @@ export default function App() {
             <Route path="/secretaria/credenciais" element={withChurch(<Credenciais />)} />
             <Route path="/secretaria/relatorios" element={withChurch(<RelatoriosSecretaria />)} />
             <Route path="/secretaria/configuracoes" element={withChurch(<SecretariaConfiguracoes />)} />
+            <Route path="/secretaria/documentos" element={withChurch(<SecretariaDocumentos />)} />
 
             {/* Tesouraria */}
             <Route path="/tesouraria/receitas" element={withChurch(<Receitas />)} />

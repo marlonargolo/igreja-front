@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutGrid, Wallet, Package, Landmark, BookUser, Settings,
   ChevronsLeft, ChevronsRight, X, Cloud, ChevronDown, ChevronRight,
-  Building2, CreditCard, Palette, Plug, HardDrive, LogOut,
+  Building2, CreditCard, Palette, Plug, HardDrive, LogOut, ArrowLeftCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/format'
 import { Headphones } from 'lucide-react'
@@ -14,19 +14,32 @@ interface NavItem {
   label: string
   icon: React.ElementType
   children?: { to: string; label: string }[]
+  /** Permissão "representativa" do módulo (ou uma lista — basta ter uma
+   *  delas) — controla se o grupo aparece no menu, refletindo o que foi
+   *  marcado em "Gerenciar Permissões". Omitida = sempre visível (ex.:
+   *  Dashboard). ROOT sempre vê tudo. */
+  permission?: string | string[]
+  /** Chave do catálogo de módulos (Admin Externa → Módulos). Quando
+   *  presente, o grupo só aparece se esse módulo estiver habilitado pra
+   *  Igreja do usuário — além de precisar da permissão acima. Omitida =
+   *  não é um módulo opcional (ex.: Dashboard, Configurações). ROOT
+   *  sempre vê tudo. */
+  moduleKey?: string
 }
 
 const navPrincipal: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutGrid },
   {
-    label: 'Configurações', icon: Settings,
+    // Grupo mistura páginas de categorias USERS (Usuários) e SETTINGS
+    // (Congregações) — basta ter visão de uma das duas para o grupo aparecer.
+    label: 'Configurações', icon: Settings, permission: ['USER_VIEW', 'SETTINGS_VIEW'],
     children: [
       { to: '/configuracoes/congregacoes', label: 'Congregações' },
       { to: '/usuarios', label: 'Usuários' },
     ],
   },
   {
-    label: 'Secretaria', icon: BookUser,
+    label: 'Secretaria', icon: BookUser, permission: 'MEMBER_VIEW', moduleKey: 'SECRETARIA',
     children: [
       { to: '/membros', label: 'Membros' },
       { to: '/secretaria/transferencias', label: 'Transferências' },
@@ -37,17 +50,17 @@ const navPrincipal: NavItem[] = [
     ],
   },
   {
-    label: 'Tesouraria', icon: Wallet,
+    label: 'Tesouraria', icon: Wallet, permission: 'FINANCE_VIEW', moduleKey: 'TESOURARIA',
     children: [
       { to: '/tesouraria/receitas', label: 'Receitas' },
       { to: '/tesouraria/despesas', label: 'Despesas' },
       { to: '/tesouraria/transferencias', label: 'Transferências' },
       { to: '/tesouraria/relatorios', label: 'Relatórios' },
-      { to: '/tesouraria/configuracoes', label: 'Configurações' },
+      { to: '/tesouraria/configuracoes', label: 'Fornecedores' },
     ],
   },
   {
-    label: 'Patrimônio', icon: Package,
+    label: 'Patrimônio', icon: Package, permission: 'ASSET_VIEW', moduleKey: 'PATRIMONIO',
     children: [
       { to: '/patrimonio', label: 'Cadastro de Bens' },
       { to: '/patrimonio/movimentacao', label: 'Movimentação' },
@@ -57,17 +70,7 @@ const navPrincipal: NavItem[] = [
     ],
   },
   {
-    label: 'Contabilidade', icon: Landmark,
-    children: [
-      { to: '/contabilidade/fechamento', label: 'Fechamento Mensal' },
-      { to: '/contabilidade/exportacao', label: 'Exportação Contábil' },
-      { to: '/contabilidade/demonstracoes', label: 'Demonstrações' },
-      { to: '/contabilidade/plano-de-contas', label: 'Plano de Contas' },
-      { to: '/contabilidade/configuracoes', label: 'Configurações' },
-    ],
-  },
-  {
-    label: 'Suporte', icon: Headphones,
+    label: 'Suporte', icon: Headphones, permission: 'SUPPORT_VIEW', moduleKey: 'SUPORTE',
     children: [
       { to: '/suporte/chamados', label: 'Chamados' },
     ],
@@ -76,7 +79,8 @@ const navPrincipal: NavItem[] = [
 
 // Administração desta Igreja apenas — a Administração Externa (global, todas
 // as Igrejas) nunca aparece aqui; ela é acessada exclusivamente pela tela de
-// seleção de Igrejas, através do botão exclusivo do ROOT.
+// seleção de Igrejas, através do botão exclusivo do ROOT. Só aparece pra
+// isAdmin (ROOT/ADMIN).
 const navAdmin: NavItem[] = [
   {
     label: 'Administração', icon: Building2,
@@ -89,6 +93,22 @@ const navAdmin: NavItem[] = [
   },
 ]
 
+// Contabilidade saiu do bloco de módulos operacionais (Secretaria/Tesouraria/
+// Patrimônio) e passou a aparecer junto do painel administrativo — mas,
+// diferente de "Administração" acima, continua liberada por ACCOUNTING_VIEW
+// (não por isAdmin): um TESOUREIRO sem a role ADMIN também tem essa
+// permissão por padrão e não pode perder o acesso ao mudar de lugar no menu.
+const navContabilidade: NavItem = {
+  label: 'Contabilidade', icon: Landmark, permission: 'ACCOUNTING_VIEW', moduleKey: 'CONTABILIDADE',
+  children: [
+    { to: '/contabilidade/fechamento', label: 'Fechamento Mensal' },
+    { to: '/contabilidade/exportacao', label: 'Exportação Contábil' },
+    { to: '/contabilidade/demonstracoes', label: 'Demonstrações' },
+    { to: '/contabilidade/plano-de-contas', label: 'Plano de Contas' },
+    { to: '/contabilidade/configuracoes', label: 'Configurações' },
+  ],
+}
+
 const ADMIN_ROLES = ['ROOT', 'ADMIN']
 
 interface SidebarProps {
@@ -99,16 +119,32 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }: SidebarProps) {
-  const { church, user, setUser, setChurch, hasPermission, isRoot } = useApp()
+  const { church, congregation, isCongregationEntered, exitCongregation, user, setUser, setChurch, hasPermission, isRoot } = useApp()
   const navigate = useNavigate()
   const [openGroups, setOpenGroups] = useState<string[]>([])
 
   const isAdmin = user?.roles?.some(r => ADMIN_ROLES.includes(r)) ?? false
-  const canViewAccounting = isRoot || hasPermission('ACCOUNTING_VIEW')
-  const principalFiltered = navPrincipal.filter(item =>
-    item.label !== 'Contabilidade' || canViewAccounting
-  )
-  const allNav = isAdmin ? [...principalFiltered, ...navAdmin] : principalFiltered
+
+  function canViewGroup(item: NavItem): boolean {
+    if (isRoot) return true
+    if (item.permission) {
+      const perms = Array.isArray(item.permission) ? item.permission : [item.permission]
+      if (!perms.some(p => hasPermission(p))) return false
+    }
+    // Módulo explicitamente desabilitado pro Admin Externa pra essa Igreja
+    // (lista ausente = sem restrição, preserva o comportamento de quem já existe).
+    if (item.moduleKey && user?.enabledModules && !user.enabledModules.includes(item.moduleKey)) {
+      return false
+    }
+    return true
+  }
+
+  const principalFiltered = navPrincipal.filter(canViewGroup)
+  const adminFiltered = navAdmin.filter(canViewGroup)
+  const contabilidadeVisible = canViewGroup(navContabilidade) ? [navContabilidade] : []
+  const allNav = isAdmin
+    ? [...principalFiltered, ...adminFiltered, ...contabilidadeVisible]
+    : [...principalFiltered, ...contabilidadeVisible]
 
   function toggleGroup(label: string) {
     setOpenGroups(prev =>
@@ -123,6 +159,11 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
     setUser(null)
     setChurch(null)
     navigate('/login')
+  }
+
+  function handleExitCongregation() {
+    exitCongregation()
+    navigate('/dashboard')
   }
 
   return (
@@ -231,11 +272,25 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
         <div className="p-3 border-t border-white/10 space-y-3">
           {!collapsed && (
             <div className="bg-white/10 rounded-xl px-3.5 py-3">
-              <p className="text-sm font-semibold truncate">{church?.name ?? '—'}</p>
+              <p className="text-sm font-semibold truncate">
+                {congregation?.name ?? church?.name ?? '—'}
+              </p>
               <div className="flex items-center justify-between mt-1.5">
-                <span className="text-xs text-white/60">{user?.organizationName ?? ''}</span>
-                <span className="text-[10px] font-bold bg-green-400/20 text-green-300 px-1.5 py-0.5 rounded">Ativo</span>
+                <span className="text-xs text-white/60 truncate">
+                  {congregation ? (congregation.churchName || church?.name || '') : (user?.organizationName ?? '')}
+                </span>
+                <span className="text-[10px] font-bold bg-green-400/20 text-green-300 px-1.5 py-0.5 rounded shrink-0 ml-2">Ativo</span>
               </div>
+              {isCongregationEntered && (
+                <button
+                  onClick={handleExitCongregation}
+                  className="mt-2 w-full flex items-center gap-1.5 text-xs font-medium text-white/70 hover:text-white"
+                  title="Voltar para a visão da Igreja inteira"
+                >
+                  <ArrowLeftCircle className="h-3.5 w-3.5 shrink-0" />
+                  Sair da Congregação
+                </button>
+              )}
             </div>
           )}
           <div className={cn('flex items-center gap-3', collapsed && 'justify-center')}>

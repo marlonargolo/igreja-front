@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button'
 import { Select } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Extras'
 import { useConfig } from '@/lib/ConfigContext'
+import { useApp } from '@/lib/AppContext'
 import { membersService, type Member } from '@/services'
 import { congregationsService, type Congregation } from '@/services/congregations.service'
 
@@ -32,7 +33,21 @@ const GRUPOS_RELATORIO = [
 
 export default function RelatoriosSecretaria() {
   const showToast = useToast()
+  const { church } = useApp()
   const { local } = useConfig()
+
+  // Logo da Igreja, embutido no cabeçalho de todos os relatórios impressos.
+  const logoUrl = church?.logoUrl
+    ? (church.logoUrl.startsWith('http')
+        ? church.logoUrl
+        : `${import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://2.24.80.229:3000'}${church.logoUrl}`)
+    : null
+  function reportHeader(titulo: string) {
+    return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+      ${logoUrl ? `<img src="${logoUrl}" onerror="this.style.display='none'" style="width:36px;height:36px;border-radius:6px;object-fit:cover" />` : ''}
+      <h1 style="font-size:16px;color:#1E3A5F;margin:0">${titulo}</h1>
+    </div>`
+  }
   const [grupo, setGrupo]           = useState('aniversariantes')
   const [sub, setSub]               = useState('')
   const [congFilter, setCongFilter] = useState('Todas')
@@ -169,7 +184,7 @@ export default function RelatoriosSecretaria() {
     th{background:#1E3A5F;color:white;padding:8px;text-align:left;font-size:11px}
     td{padding:7px 8px;border-bottom:1px solid #eee;font-size:11px}
     tr:nth-child(even) td{background:#f9f9f9}</style></head><body>
-    <h1>${titulo}</h1>
+    ${reportHeader(titulo)}
     <p class="sub">Congregação: ${congLabel()} | Gerado em ${new Date().toLocaleString('pt-BR')} | Total: ${data.length}</p>
     <table><thead><tr><th>Nome</th><th>E-mail</th><th>Telefone</th><th>Cargo</th><th>Funções</th><th>Status</th><th>Nascimento</th></tr></thead>
     <tbody>${rows}</tbody></table></body></html>`)
@@ -202,7 +217,7 @@ export default function RelatoriosSecretaria() {
     })
     win.document.write(`<html><head><title>${titulo}</title>
     <style>body{font-family:Arial;padding:20px}h1{font-size:16px;color:#1E3A5F}</style></head>
-    <body><h1>${titulo}</h1>
+    <body>${reportHeader(titulo)}
     <p style="color:#666;font-size:11px;margin-bottom:16px">Congregação: ${congLabel()} | ${new Date().toLocaleString('pt-BR')}</p>
     ${html||'<p style="color:#666">Nenhum registro encontrado.</p>'}</body></html>`)
     win.document.close()
@@ -223,7 +238,7 @@ export default function RelatoriosSecretaria() {
     th{background:#1E3A5F;color:white;padding:8px;text-align:left;font-size:11px}
     td{padding:7px 8px;border-bottom:1px solid #eee;font-size:11px}
     tr:nth-child(even) td{background:#f9f9f9}</style></head><body>
-    <h1>Relatório de Congregações</h1>
+    ${reportHeader('Relatório de Congregações')}
     <p style="color:#666;font-size:11px;margin-bottom:16px">Gerado em ${new Date().toLocaleString('pt-BR')} — Total: ${list.length}</p>
     <table><thead><tr><th>Nome</th><th>Cidade/UF</th><th>E-mail</th><th>Telefone</th><th>Status</th></tr></thead>
     <tbody>${rows}</tbody></table></body></html>`)

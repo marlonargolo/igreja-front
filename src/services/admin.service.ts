@@ -129,7 +129,7 @@ export const adminService = {
 
   async getGlobalSettings(): Promise<GlobalSettings | null> {
     try {
-      const res = await http.get<ApiSuccess<GlobalSettings>>('/settings/global')
+      const res = await http.get<ApiSuccess<GlobalSettings>>('/admin/settings')
       return res?.data ?? null
     } catch {
       return null
@@ -137,7 +137,11 @@ export const adminService = {
   },
 
   async updateGlobalSettings(payload: GlobalSettings): Promise<GlobalSettings> {
-    const res = await http.put<ApiSuccess<GlobalSettings>>('/settings/global', payload)
-    return res.data
+    // O backend grava uma chave por vez (/admin/settings/{key}), não o objeto inteiro de uma vez.
+    await Promise.all(
+      Object.entries(payload).map(([key, value]) =>
+        http.put(`/admin/settings/${key}`, { value }))
+    )
+    return (await adminService.getGlobalSettings()) ?? payload
   },
 }

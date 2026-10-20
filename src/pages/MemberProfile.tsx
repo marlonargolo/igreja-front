@@ -1,13 +1,15 @@
 import { useParams, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { Mail, Phone, MapPin, Save, Plus, Trash2, Printer } from 'lucide-react'
+import { Mail, Phone, MapPin, Save, Plus, Trash2, Printer, Upload, Download, Loader2 } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { Select, Input } from '@/components/ui/Input'
+import { Modal } from '@/components/ui/Modal'
 import { Tabs } from '@/components/ui/Tabs'
 import { useToast } from '@/components/ui/Extras'
-import { membersService, type Member } from '@/services'
+import { membersService, type Member, type MemberDocument } from '@/services'
 import { EmptyState } from '@/components/ui/Misc'
 import { useApp } from '@/lib/AppContext'
 import { http } from '@/lib/http'
@@ -23,9 +25,31 @@ interface Occurrence {
   createdAt: string
 }
 
+interface HistoryEntry {
+  id: number
+  action: string
+  userEmail?: string
+  oldValues?: { status?: string }
+  newValues?: { status?: string }
+  createdAt: string
+}
+
+const HISTORY_ACTION_LABEL: Record<string, string> = {
+  UPDATE_MEMBER_STATUS: 'Status alterado',
+}
+
+const DOCUMENT_TYPE_LABEL: Record<string, string> = {
+  FICHA: 'Ficha de Cadastro (assinada)',
+  TERMO: 'Termo de Voluntariado (assinado)',
+  RG: 'RG',
+  CPF: 'CPF',
+  COMPROVANTE_RESIDENCIA: 'Comprovante de Residência',
+  OUTROS: 'Outros',
+}
+
 const statusTone: Record<string, 'green' | 'gray' | 'blue'> = {
-  ACTIVE: 'green',
-  INACTIVE: 'gray',
+  ATIVO: 'green',
+  INATIVO: 'gray',
   VISITOR: 'blue',
 }
 
@@ -40,7 +64,11 @@ interface Contribution {
   categoryName?: string
 }
 
-function ContribuicoesTab({ memberId }: { memberId: number }) {
+function ContribuicoesTab({ memberId, memberName, church }: {
+  memberId: number
+  memberName: string
+  church: { name?: string; logoUrl?: string | null } | null
+}) {
   const [contributions, setContributions] = useState<Contribution[]>([])
   const [loading, setLoading] = useState(true)
   const showToast = useToast()
@@ -62,16 +90,68 @@ function ContribuicoesTab({ memberId }: { memberId: number }) {
     return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
   }
 
+  function printReport() {
+    const logo = resolveLogoUrl(church?.logoUrl || undefined)
+    const win = window.open('', '_blank')
+    if (!win) return
+    const rows = contributions.map(c => `<tr>
+      <td>${new Date(c.transactionDate).toLocaleDateString('pt-BR')}</td>
+      <td>${c.description}</td>
+      <td>${c.categoryName || '—'}</td>
+      <td>${c.status === 'CONFIRMED' ? 'Confirmado' : 'Pendente'}</td>
+      <td style="text-align:right">${fmt(Number(c.amount))}</td>
+    </tr>`).join('')
+    win.document.write(`
+      <html><head><title>Relatório de Contribuições — ${memberName}</title>
+      <style>
+        body { font-family: Arial; font-size: 12px; padding: 24px; max-width: 800px; margin: 0 auto; }
+        .church-header { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #1E3A5F; padding-bottom: 10px; margin-bottom: 16px; }
+        .church-header img { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; }
+        .church-header h1 { margin: 0; font-size: 16px; color: #1E3A5F; }
+        .church-header p { margin: 2px 0 0; font-size: 11px; color: #666; }
+        table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+        th { background: #1E3A5F; color: white; padding: 7px 8px; text-align: left; font-size: 10px; }
+        td { padding: 6px 8px; border-bottom: 1px solid #eee; font-size: 11px; }
+        .total-row td { font-weight: bold; border-top: 2px solid #1E3A5F; border-bottom: none; }
+        @media print { body { padding: 10px; } }
+      </style></head>
+      <body>
+        <div class="church-header">
+          ${logo ? `<img src="${logo}" onerror="this.style.display='none'" />` : ''}
+          <div>
+            <h1>${church?.name || 'IgrejaHub'}</h1>
+            <p>Relatório de Contribuições — ${memberName}</p>
+          </div>
+        </div>
+        <p style="color:#666;font-size:11px;margin-bottom:10px">Emitido em ${new Date().toLocaleDateString('pt-BR')}</p>
+        <table>
+          <thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Status</th><th style="text-align:right">Valor</th></tr></thead>
+          <tbody>
+            ${rows || '<tr><td colspan="5" style="text-align:center;color:#888">Nenhuma contribuição registrada.</td></tr>'}
+            <tr class="total-row"><td colspan="4">Total</td><td style="text-align:right">${fmt(total)}</td></tr>
+          </tbody>
+        </table>
+      </body></html>
+    `)
+    win.document.close()
+    setTimeout(() => win.print(), 400)
+  }
+
   return (
     <Card>
       <CardBody className="pt-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
           <h3 className="font-bold text-brand-900">Contribuições Financeiras</h3>
-          {contributions.length > 0 && (
-            <span className="text-sm font-semibold text-green-600">
-              Total: {fmt(total)}
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {contributions.length > 0 && (
+              <span className="text-sm font-semibold text-green-600">
+                Total: {fmt(total)}
+              </span>
+            )}
+            <Button variant="outline" onClick={printReport}>
+              <Printer className="h-4 w-4" /> Gerar Relatório
+            </Button>
+          </div>
         </div>
 
         {loading ? (
@@ -121,6 +201,14 @@ export default function MemberProfile() {
   const [occurrences, setOccurrences] = useState<Occurrence[]>([])
   const [newOccurrence, setNewOccurrence] = useState({ date: new Date().toISOString().split('T')[0], description: '' })
   const [savingOcc, setSavingOcc] = useState(false)
+  const [history, setHistory] = useState<HistoryEntry[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const [documents, setDocuments] = useState<MemberDocument[]>([])
+  const [loadingDocs, setLoadingDocs] = useState(false)
+  const [uploadType, setUploadType] = useState<MemberDocument['documentType']>('OUTROS')
+  const [uploadingDoc, setUploadingDoc] = useState(false)
+  const [certType, setCertType] = useState<'BATISMO' | 'APRESENTACAO' | 'CASAMENTO' | null>(null)
+  const [certForm, setCertForm] = useState({ date: '', celebrant: '', witness1: '', witness2: '', spouseName: '' })
 
   useEffect(() => {
     if (id) {
@@ -133,7 +221,59 @@ export default function MemberProfile() {
 
   useEffect(() => {
     if (id && tab === 'Ocorrências') loadOccurrences()
+    if (id && tab === 'Histórico') loadHistory()
+    if (id && tab === 'Documentos') loadDocuments()
   }, [id, tab])
+
+  async function loadDocuments() {
+    setLoadingDocs(true)
+    try {
+      const list = await membersService.getDocuments(Number(id))
+      setDocuments(list)
+    } catch {
+      setDocuments([])
+    } finally {
+      setLoadingDocs(false)
+    }
+  }
+
+  async function handleDocumentUpload(file: File) {
+    setUploadingDoc(true)
+    try {
+      await membersService.uploadDocument(Number(id), file, uploadType)
+      showToast('Documento enviado.')
+      loadDocuments()
+    } catch {
+      showToast('Falha ao enviar documento.')
+    } finally {
+      setUploadingDoc(false)
+    }
+  }
+
+  async function handleDocumentDelete(docId: number) {
+    if (!confirm('Excluir este documento? Essa ação não pode ser desfeita.')) return
+    try {
+      await membersService.deleteDocument(Number(id), docId)
+      setDocuments(prev => prev.filter(d => d.id !== docId))
+      showToast('Documento excluído.')
+    } catch {
+      showToast('Falha ao excluir documento.')
+    }
+  }
+
+  async function loadHistory() {
+    setLoadingHistory(true)
+    try {
+      const res = await http.get<any>(`/members/${id}/history`, { size: 50 })
+      const raw = res?.data
+      const list = raw?.data || raw?.content || raw || []
+      setHistory(Array.isArray(list) ? list : [])
+    } catch {
+      setHistory([])
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
 
   async function loadOccurrences() {
     try {
@@ -163,6 +303,7 @@ export default function MemberProfile() {
   }
 
   async function removeOccurrence(occId: number) {
+    if (!confirm('Excluir esta ocorrência? Essa ação não pode ser desfeita.')) return
     try {
       await http.delete(`/members/${id}/occurrences/${occId}`)
       setOccurrences(prev => prev.filter(o => o.id !== occId))
@@ -217,7 +358,7 @@ export default function MemberProfile() {
       </div>
       <div class="footer">
         <span>Emitida em ${new Date().toLocaleDateString('pt-BR')}</span>
-        <span>${member.status === 'ACTIVE' ? 'ATIVO' : 'INATIVO'}</span>
+        <span>${member.status || 'ATIVO'}</span>
       </div>
     </div>
     </body></html>
@@ -291,6 +432,72 @@ export default function MemberProfile() {
   setTimeout(() => win.print(), 400)
 }
 
+  const CERT_TITLE: Record<string, string> = {
+    BATISMO: 'Certificado de Batismo',
+    APRESENTACAO: 'Certificado de Apresentação',
+    CASAMENTO: 'Certificado de Casamento',
+  }
+
+  function openCertModal(type: 'BATISMO' | 'APRESENTACAO' | 'CASAMENTO') {
+    setCertType(type)
+    setCertForm({
+      date: type === 'BATISMO' && member?.baptismDate ? member.baptismDate.split('T')[0] : new Date().toISOString().split('T')[0],
+      celebrant: '', witness1: '', witness2: '', spouseName: '',
+    })
+  }
+
+  function printCertificate() {
+    if (!member || !certType) return
+    const logo = church?.logoUrl
+      ? (church.logoUrl.startsWith('http')
+          ? church.logoUrl
+          : `${import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://2.24.80.229:3000'}${church.logoUrl}`)
+      : null
+    const dateFmt = certForm.date ? new Date(certForm.date).toLocaleDateString('pt-BR') : '___/___/______'
+
+    let body = ''
+    if (certType === 'BATISMO') {
+      body = `<p>Certificamos que <strong>${member.name}</strong> foi batizado(a) nas águas em <strong>${dateFmt}</strong>, conforme os princípios bíblicos, sob a celebração de <strong>${certForm.celebrant || '___________________'}</strong>.</p>`
+    } else if (certType === 'APRESENTACAO') {
+      body = `<p>Certificamos que <strong>${member.name}</strong> foi apresentado(a) à comunidade desta igreja em <strong>${dateFmt}</strong>, sob a celebração de <strong>${certForm.celebrant || '___________________'}</strong>.</p>`
+    } else {
+      body = `<p>Certificamos que <strong>${member.name}</strong> uniu(ram)-se em matrimônio com <strong>${certForm.spouseName || '___________________'}</strong> em <strong>${dateFmt}</strong>, sob a celebração de <strong>${certForm.celebrant || '___________________'}</strong>.</p>`
+    }
+
+    const win = window.open('', '_blank')
+    if (!win) return
+    win.document.write(`
+      <html><head><title>${CERT_TITLE[certType]} — ${member.name}</title>
+      <style>
+        body { font-family: Georgia, serif; font-size: 13px; padding: 40px; max-width: 700px; margin: 0 auto; }
+        .church-header { display: flex; align-items: center; gap: 14px; justify-content: center; margin-bottom: 24px; }
+        .church-header img { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; }
+        .church-header h1 { margin: 0; font-size: 16px; color: #1E3A5F; }
+        h2 { text-align: center; font-size: 22px; color: #1E3A5F; letter-spacing: 1px; margin: 10px 0 30px; }
+        p { line-height: 1.8; text-align: center; font-size: 14px; }
+        .testemunhas { margin-top: 40px; display: flex; gap: 40px; justify-content: center; }
+        .testemunhas div { flex: 1; max-width: 220px; text-align: center; border-top: 1px solid #333; padding-top: 6px; font-size: 11px; }
+        @media print { body { padding: 10px; } }
+      </style></head>
+      <body>
+        <div class="church-header">
+          ${logo ? `<img src="${logo}" onerror="this.style.display='none'" />` : ''}
+          <h1>${church?.name || 'IgrejaHub'}</h1>
+        </div>
+        <h2>${CERT_TITLE[certType]}</h2>
+        ${body}
+        ${(certForm.witness1 || certForm.witness2) ? `
+        <div class="testemunhas">
+          <div>${certForm.witness1 || '— Testemunha —'}</div>
+          <div>${certForm.witness2 || '— Testemunha —'}</div>
+        </div>` : ''}
+      </body></html>
+    `)
+    win.document.close()
+    setTimeout(() => win.print(), 400)
+    setCertType(null)
+  }
+
   if (loading) {
     return (
       <Layout crumbs={[{ label: 'Secretaria' }, { label: 'Membros', to: '/membros' }]} title="Carregando...">
@@ -345,18 +552,26 @@ export default function MemberProfile() {
               <Printer className="h-4 w-4" /> Imprimir Ficha
             </Button>
             <Button variant="outline" onClick={() => navigate(`/membros/${member.id}/editar`)}>Editar</Button>
-            <Button variant="danger" onClick={() => {
-              membersService.update(member.id, { status: 'INACTIVE' })
-                .then(() => { showToast(`${member.name} foi desativado.`); navigate('/membros') })
-                .catch(() => showToast('Falha ao desativar.'))
-            }}>Desativar</Button>
+            {member.status === 'ATIVO' ? (
+              <Button variant="danger" onClick={() => {
+                membersService.update(member.id, { status: 'INATIVO' })
+                  .then(() => { showToast(`${member.name} foi desativado.`); navigate('/membros') })
+                  .catch(() => showToast('Falha ao desativar.'))
+              }}>Desativar</Button>
+            ) : member.status === 'INATIVO' ? (
+              <Button variant="outline" onClick={() => {
+                membersService.update(member.id, { status: 'ATIVO' })
+                  .then(updated => { setMember(updated); showToast(`${member.name} foi reativado.`) })
+                  .catch(() => showToast('Falha ao reativar.'))
+              }}>Ativar</Button>
+            ) : null}
           </div>
         </CardBody>
       </Card>
 
       <div className="mt-6">
         <Tabs
-          tabs={['Informações Pessoais', 'Histórico', 'Ocorrências', 'Termo de Voluntariado', 'Contribuições', 'Documentos']}
+          tabs={['Informações Pessoais', 'Histórico', 'Ocorrências', 'Termo de Voluntariado', 'Contribuições', 'Certificados', 'Documentos']}
           active={tab}
           onChange={setTab}
         />
@@ -398,7 +613,6 @@ export default function MemberProfile() {
         <div className="border border-brand-100 rounded-lg px-4 py-3 bg-brand-50/30">
           <p className="text-xs text-brand-300 mb-1">{member.memberSince ? new Date(member.memberSince).toLocaleDateString('pt-BR') : '—'}</p>
           <p className="text-sm text-brand-900 font-semibold">Membro cadastrado no sistema</p>
-          <p className="text-xs text-brand-400 mt-0.5">Status inicial: {member.status}</p>
         </div>
         {(member as any).baptismDate && (
           <div className="border border-brand-100 rounded-lg px-4 py-3 bg-brand-50/30">
@@ -406,9 +620,28 @@ export default function MemberProfile() {
             <p className="text-sm text-brand-900 font-semibold">Data de Batismo registrada</p>
           </div>
         )}
-        <p className="text-xs text-brand-300 text-center pt-2">
-          Registro completo de alterações disponível após integração com módulo de auditoria.
-        </p>
+        {loadingHistory ? (
+          <p className="text-brand-300 text-sm text-center py-4">Carregando...</p>
+        ) : history.length === 0 ? (
+          <p className="text-brand-300 text-sm text-center py-2">Nenhuma alteração registrada ainda.</p>
+        ) : (
+          history.map(h => (
+            <div key={h.id} className="border border-brand-100 rounded-lg px-4 py-3 bg-brand-50/30">
+              <p className="text-xs text-brand-300 mb-1">{new Date(h.createdAt).toLocaleString('pt-BR')}</p>
+              <p className="text-sm text-brand-900 font-semibold">
+                {HISTORY_ACTION_LABEL[h.action] || h.action}
+              </p>
+              {h.oldValues?.status && h.newValues?.status && (
+                <p className="text-xs text-brand-400 mt-0.5">
+                  {h.oldValues.status} → {h.newValues.status}
+                </p>
+              )}
+              {h.userEmail && (
+                <p className="text-xs text-brand-300 mt-0.5">por {h.userEmail}</p>
+              )}
+            </div>
+          ))
+        )}
       </div>
     </CardBody>
   </Card>
@@ -486,12 +719,18 @@ export default function MemberProfile() {
                   </p>
                 </div>
                 <Button onClick={() => {
+                  const logo = church?.logoUrl
+                    ? (church.logoUrl.startsWith('http')
+                        ? church.logoUrl
+                        : `${import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://2.24.80.229:3000'}${church.logoUrl}`)
+                    : null
                   const win = window.open('', '_blank')
                   if (!win) return
                   win.document.write(`
                     <html><head><title>Termo de Voluntariado — ${member.name}</title>
                     <style>
                       body { font-family: Arial; font-size: 13px; padding: 40px; max-width: 720px; margin: 0 auto; line-height: 1.7; }
+                      .church-logo { display: block; margin: 0 auto 12px; width: 56px; height: 56px; border-radius: 8px; object-fit: cover; }
                       h1 { text-align: center; font-size: 16px; color: #1E3A5F; margin-bottom: 8px; }
                       h2 { text-align: center; font-size: 13px; color: #555; margin-bottom: 32px; font-weight: normal; }
                       p { margin-bottom: 16px; text-align: justify; }
@@ -499,6 +738,7 @@ export default function MemberProfile() {
                       .assinatura div { flex: 1; text-align: center; border-top: 1px solid #333; padding-top: 8px; font-size: 12px; }
                     </style></head>
                     <body>
+                      ${logo ? `<img class="church-logo" src="${logo}" onerror="this.style.display='none'" />` : ''}
                       <h1>TERMO DE SERVIÇO VOLUNTÁRIO</h1>
                       <h2>${church?.name || 'Igreja'}</h2>
                       <p>Eu, <strong>${member.name}</strong>, portador(a) do RG nº <strong>${(member as any).rg || '_______________'}</strong> e CPF nº <strong>${(member as any).cpf || '_______________'}</strong>, residente e domiciliado(a) em ${member.address || '_______________'}, declaro para os devidos fins que presto serviços de forma voluntária e espontânea à <strong>${church?.name || 'Igreja'}</strong>, sem receber qualquer remuneração, gratificação, benefício ou vantagem financeira, em conformidade com a Lei Federal nº 9.608 de 18 de fevereiro de 1998.</p>
@@ -522,53 +762,119 @@ export default function MemberProfile() {
           )}
 
           {tab === 'Contribuições' && (
-            <ContribuicoesTab memberId={member.id} />
+            <ContribuicoesTab memberId={member.id} memberName={member.name} church={church} />
+          )}
+          {tab === 'Certificados' && (
+            <Card>
+              <CardBody className="pt-6">
+                <h3 className="font-bold text-brand-900 mb-1">Certificados</h3>
+                <p className="text-xs text-brand-400 mb-4">
+                  Os dados abaixo (data, celebrante, testemunhas) são usados só na hora de imprimir — nada é salvo no cadastro do membro.
+                </p>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-4 border border-brand-100 rounded-lg">
+                    <div>
+                      <p className="text-sm font-semibold text-brand-900">Certificado de Batismo</p>
+                      <p className="text-xs text-brand-300">
+                        {member.baptismDate ? `Batizado(a) em ${new Date(member.baptismDate).toLocaleDateString('pt-BR')}` : 'Data de batismo não cadastrada'}
+                      </p>
+                    </div>
+                    <button onClick={() => openCertModal('BATISMO')}
+                      className="text-sm font-semibold text-brand-700 hover:underline flex items-center gap-1">
+                      <Printer className="h-3.5 w-3.5" /> Gerar
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between p-4 border border-brand-100 rounded-lg">
+                    <div>
+                      <p className="text-sm font-semibold text-brand-900">Certificado de Apresentação</p>
+                      <p className="text-xs text-brand-300">Apresentação do membro à congregação</p>
+                    </div>
+                    <button onClick={() => openCertModal('APRESENTACAO')}
+                      className="text-sm font-semibold text-brand-700 hover:underline flex items-center gap-1">
+                      <Printer className="h-3.5 w-3.5" /> Gerar
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between p-4 border border-brand-100 rounded-lg">
+                    <div>
+                      <p className="text-sm font-semibold text-brand-900">Certificado de Casamento</p>
+                      <p className="text-xs text-brand-300">Dados do cônjuge preenchidos na hora de gerar</p>
+                    </div>
+                    <button onClick={() => openCertModal('CASAMENTO')}
+                      className="text-sm font-semibold text-brand-700 hover:underline flex items-center gap-1">
+                      <Printer className="h-3.5 w-3.5" /> Gerar
+                    </button>
+                  </div>
+                </div>
+              </CardBody>
+            </Card>
           )}
           {tab === 'Documentos' && (
             <Card>
               <CardBody className="pt-6">
                 <h3 className="font-bold text-brand-900 mb-4">Documentos do Membro</h3>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between p-4 border border-brand-100 rounded-lg">
-                    <div>
-                      <p className="text-sm font-semibold text-brand-900">Ficha de Cadastro</p>
-                      <p className="text-xs text-brand-300">Formulário de admissão assinado</p>
-                    </div>
-                    <button
-                      onClick={printFicha}
-                      className="text-sm font-semibold text-brand-700 hover:underline flex items-center gap-1"
-                    >
-                      <Printer className="h-3.5 w-3.5" /> Imprimir
-                    </button>
+
+                <div className="flex flex-col sm:flex-row gap-3 mb-5 p-4 border border-brand-100 rounded-lg bg-brand-50/30">
+                  <Select
+                    label="Tipo de documento"
+                    value={uploadType}
+                    onChange={e => setUploadType(e.target.value as MemberDocument['documentType'])}
+                    className="sm:w-64"
+                  >
+                    {Object.entries(DOCUMENT_TYPE_LABEL).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </Select>
+                  <div className="flex-1 flex items-end">
+                    <label className="w-full">
+                      <input
+                        type="file"
+                        className="hidden"
+                        disabled={uploadingDoc}
+                        onChange={e => {
+                          const file = e.target.files?.[0]
+                          if (file) handleDocumentUpload(file)
+                          e.target.value = ''
+                        }}
+                      />
+                      <span className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-brand-800 text-white text-sm font-semibold cursor-pointer hover:bg-brand-700 transition-colors">
+                        {uploadingDoc
+                          ? <><Loader2 className="h-4 w-4 animate-spin" /> Enviando...</>
+                          : <><Upload className="h-4 w-4" /> Enviar documento</>}
+                      </span>
+                    </label>
                   </div>
-                  <div className="flex items-center justify-between p-4 border border-brand-100 rounded-lg">
-                    <div>
-                      <p className="text-sm font-semibold text-brand-900">Termo de Voluntariado</p>
-                      <p className="text-xs text-brand-300">Lei 9.608/98 — proteção trabalhista</p>
-                    </div>
-                    <button
-                      onClick={() => setTab('Termo de Voluntariado')}
-                      className="text-sm font-semibold text-brand-700 hover:underline"
-                    >
-                      Ver Termo
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between p-4 border border-brand-100 rounded-lg">
-                    <div>
-                      <p className="text-sm font-semibold text-brand-900">Credencial de Membro</p>
-                      <p className="text-xs text-brand-300">Carteirinha com foto e cargo</p>
-                    </div>
-                    <button
-                      onClick={printCredencial}
-                      className="text-sm font-semibold text-brand-700 hover:underline flex items-center gap-1"
-                    >
-                      <Printer className="h-3.5 w-3.5" /> Imprimir
-                    </button>
-                  </div>
-                  <p className="text-xs text-brand-300 text-center pt-2">
-                    Upload de documentos digitalizados disponível em breve.
-                  </p>
                 </div>
+
+                {loadingDocs ? (
+                  <p className="text-brand-300 text-sm text-center py-6">Carregando...</p>
+                ) : documents.length === 0 ? (
+                  <p className="text-brand-300 text-sm text-center py-6">Nenhum documento enviado ainda.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {documents.map(doc => (
+                      <div key={doc.id} className="flex items-center justify-between p-4 border border-brand-100 rounded-lg">
+                        <div>
+                          <p className="text-sm font-semibold text-brand-900">
+                            {DOCUMENT_TYPE_LABEL[doc.documentType] || doc.documentType}
+                          </p>
+                          <p className="text-xs text-brand-300">
+                            {doc.fileName} · {new Date(doc.createdAt).toLocaleDateString('pt-BR')}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <a href={resolveLogoUrl(doc.fileUrl)} target="_blank" rel="noreferrer"
+                            className="text-brand-400 hover:text-brand-700" title="Baixar">
+                            <Download className="h-4 w-4" />
+                          </a>
+                          <button onClick={() => handleDocumentDelete(doc.id)}
+                            className="text-brand-200 hover:text-red-500" title="Excluir">
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardBody>
             </Card>
           )}
@@ -584,6 +890,54 @@ export default function MemberProfile() {
           </CardBody>
         </Card>
       </div>
+
+      <Modal
+        open={certType !== null}
+        onClose={() => setCertType(null)}
+        title={certType ? CERT_TITLE[certType] : ''}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setCertType(null)}>Cancelar</Button>
+            <Button onClick={printCertificate}>
+              <Printer className="h-4 w-4" /> Gerar e Imprimir
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Input
+            label={certType === 'BATISMO' ? 'Data do Batismo' : certType === 'APRESENTACAO' ? 'Data da Apresentação' : 'Data do Casamento'}
+            type="date"
+            value={certForm.date}
+            onChange={e => setCertForm({ ...certForm, date: e.target.value })}
+          />
+          {certType === 'CASAMENTO' && (
+            <Input
+              label="Nome do(a) Cônjuge"
+              value={certForm.spouseName}
+              onChange={e => setCertForm({ ...certForm, spouseName: e.target.value })}
+            />
+          )}
+          <Input
+            label="Celebrante"
+            value={certForm.celebrant}
+            onChange={e => setCertForm({ ...certForm, celebrant: e.target.value })}
+            placeholder="Nome do(a) pastor(a) celebrante"
+          />
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Input
+              label="Testemunha 1 (opcional)"
+              value={certForm.witness1}
+              onChange={e => setCertForm({ ...certForm, witness1: e.target.value })}
+            />
+            <Input
+              label="Testemunha 2 (opcional)"
+              value={certForm.witness2}
+              onChange={e => setCertForm({ ...certForm, witness2: e.target.value })}
+            />
+          </div>
+        </div>
+      </Modal>
     </Layout>
   )
 }

@@ -12,6 +12,8 @@ export interface DashboardMetrics {
   totalAssets: number
   activeUsers: number
   pendingTransactions: number
+  pendingRevenue: number
+  pendingExpenses: number
 }
 
 export interface DashboardParams {

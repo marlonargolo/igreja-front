@@ -53,6 +53,28 @@ export const rootContext = {
   },
 }
 
+/**
+ * Contexto de Congregação para admins de Igreja "entrando" numa Congregação
+ * específica (mesma ideia do rootContext, um nível abaixo). Armazenado no
+ * sessionStorage. O backend só aceita esse header para usuários sem
+ * congregationId fixo no próprio JWT e valida que a Congregação pertence à
+ * Igreja do usuário — aqui é só o transporte do valor escolhido.
+ */
+const CONGREGATION_ID_KEY = 'igrejahub_entered_congregation_id'
+
+export const congregationContext = {
+  getId: (): string | null =>
+    sessionStorage.getItem(CONGREGATION_ID_KEY),
+
+  enter: (congregationId: string | number) => {
+    sessionStorage.setItem(CONGREGATION_ID_KEY, String(congregationId))
+  },
+
+  exit: () => {
+    sessionStorage.removeItem(CONGREGATION_ID_KEY)
+  },
+}
+
 interface RequestOptions extends Omit<RequestInit, 'body'> {
   params?: ApiListParams | Record<string, unknown>
   body?: unknown
@@ -85,6 +107,16 @@ function buildRootHeaders(): Record<string, string> {
   }
 
   return headers
+}
+
+/**
+ * Header de Congregação "entrada" pelo usuário — enviado em TODOS os
+ * requests. O backend ignora se o usuário não for elegível (ROOT ou já
+ * fixo numa Congregação) ou se a Congregação não pertencer à própria Igreja.
+ */
+function buildCongregationHeaders(): Record<string, string> {
+  const congregationId = congregationContext.getId()
+  return congregationId ? { 'X-Congregation-Id': congregationId } : {}
 }
 
 let refreshPromise: Promise<void> | null = null
@@ -120,6 +152,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       // Headers de contexto ROOT — enviados em TODOS os requests
       // O backend ignora se o usuário não for ROOT
       ...buildRootHeaders(),
+      // Header de Congregação "entrada" — enviado em TODOS os requests
+      // O backend ignora se o usuário não for elegível
+      ...buildCongregationHeaders(),
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,

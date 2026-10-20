@@ -1,14 +1,20 @@
 /**
  * SecretariaDocumentos.tsx
- * Documentos recebidos via ROOT — visíveis pela Igreja/Congregação destino.
- * Backend filtra automaticamente pelo contexto do usuário via header X-Church-Id.
+ * Documentos da Igreja/Congregação do usuário — recebidos via ROOT ou
+ * enviados pela própria Secretaria. Backend resolve churchId/congregationId
+ * sempre pelo contexto do chamador (headers X-Church-Id/X-Congregation-Id);
+ * o formulário de envio nem pergunta isso, porque não tem o que escolher.
  */
 import { useState, useEffect } from 'react'
-import { Download, FileText, Eye } from 'lucide-react'
+import { Download, FileText, Eye, Upload, Trash2, Plus } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { Modal } from '@/components/ui/Modal'
 import { useToast } from '@/components/ui/Extras'
+import { useApp } from '@/lib/AppContext'
 import { http } from '@/lib/http'
 
 interface Doc {
@@ -36,12 +42,21 @@ function isImage(d: Doc) { return d.fileType?.startsWith('image/') || false }
 
 export default function SecretariaDocumentos() {
   const showToast = useToast()
+  const { hasPermission, isRoot } = useApp()
+  const canUpload = isRoot || hasPermission('SETTINGS_UPDATE')
   const [docs,     setDocs]     = useState<Doc[]>([])
   const [loading,  setLoading]  = useState(true)
   const [preview,  setPreview]  = useState<Doc | null>(null)
+  const [open,     setOpen]     = useState(false)
+  const [sending,  setSending]  = useState(false)
+  const [form, setForm] = useState({ title: '', description: '' })
+  const [file, setFile] = useState<File | null>(null)
 
-  useEffect(() => {
-    // Backend filtra pela Igreja do usuário via header X-Church-Id
+  useEffect(() => { loadDocs() }, [])
+
+  function loadDocs() {
+    setLoading(true)
+    // Backend filtra pela Igreja/Congregação do usuário via headers
     http.get<any>('/documents', { page: 0, size: 200 })
       .then(res => {
         const raw = res?.data
@@ -50,10 +65,48 @@ export default function SecretariaDocumentos() {
       })
       .catch(() => showToast('Falha ao carregar documentos.'))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  async function handleSend(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.title || !file) { showToast('Título e arquivo são obrigatórios.'); return }
+    setSending(true)
+    try {
+      await http.upload('/documents', file, 'file', {
+        title: form.title,
+        ...(form.description ? { description: form.description } : {}),
+      })
+      showToast('Documento enviado.')
+      setOpen(false)
+      setForm({ title: '', description: '' })
+      setFile(null)
+      loadDocs()
+    } catch (err: any) {
+      showToast(err?.message || 'Falha ao enviar documento.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm('Excluir este documento? Essa ação não pode ser desfeita.')) return
+    try {
+      await http.delete(`/documents/${id}`)
+      showToast('Documento excluído.')
+      loadDocs()
+    } catch {
+      showToast('Falha ao excluir documento.')
+    }
+  }
 
   return (
-    <Layout crumbs={[{ label: 'Secretaria' }, { label: 'Documentos' }]} title="Documentos Recebidos">
+    <Layout
+      crumbs={[{ label: 'Secretaria' }, { label: 'Documentos' }]}
+      title="Documentos"
+      action={canUpload
+        ? { label: 'Enviar Documento', icon: <Plus className="h-4 w-4" />, onClick: () => setOpen(true) }
+        : undefined}
+    >
 
       <Card>
         <CardHeader><CardTitle>Documentos ({docs.length})</CardTitle></CardHeader>
@@ -62,9 +115,13 @@ export default function SecretariaDocumentos() {
             <div className="py-8 text-center text-brand-300">Carregando...</div>
           ) : docs.length === 0 ? (
             <div className="py-8 text-center text-brand-300">
-              Nenhum documento recebido ainda.
+              Nenhum documento ainda.
               <br />
-              <span className="text-xs">Os documentos enviados pela administração aparecerão aqui.</span>
+              <span className="text-xs">
+                {canUpload
+                  ? 'Envie um documento ou aguarde um recebido pela administração.'
+                  : 'Os documentos enviados pela administração aparecerão aqui.'}
+              </span>
             </div>
           ) : (
             <div className="space-y-3">
@@ -105,6 +162,12 @@ export default function SecretariaDocumentos() {
                       className="p-1.5 rounded hover:bg-brand-50 text-brand-400" title="Download">
                       <Download className="h-4 w-4" />
                     </a>
+                    {canUpload && (
+                      <button onClick={() => handleDelete(d.id)}
+                        className="p-1.5 rounded hover:bg-red-50 text-red-400" title="Excluir">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -112,6 +175,48 @@ export default function SecretariaDocumentos() {
           )}
         </CardBody>
       </Card>
+
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title="Enviar Documento"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSend} disabled={sending}>
+              {sending ? 'Enviando...' : 'Enviar'}
+            </Button>
+          </>
+        }
+      >
+        <form onSubmit={handleSend} className="space-y-4">
+          <Input label="Título do Documento" value={form.title}
+            onChange={e => setForm({ ...form, title: e.target.value })} required />
+          <div>
+            <p className="text-sm font-semibold text-brand-900 mb-1.5">Descrição (opcional)</p>
+            <textarea rows={2} value={form.description}
+              onChange={e => setForm({ ...form, description: e.target.value })}
+              className="w-full px-3.5 py-2.5 rounded-lg border border-brand-100 text-sm outline-none focus:border-brand-500 resize-none" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-brand-900 mb-1.5 flex items-center gap-1.5">
+              <Upload className="h-3.5 w-3.5" /> Arquivo
+            </p>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.zip"
+              onChange={e => setFile(e.target.files?.[0] || null)}
+              className="text-sm text-brand-500"
+              required
+            />
+            {file && <p className="text-xs text-brand-300 mt-1">{file.name} ({formatSize(file.size)})</p>}
+          </div>
+          <p className="text-xs text-brand-300 bg-brand-50 rounded-lg px-3 py-2">
+            O documento fica visível para a sua Igreja. Se você estiver dentro de uma Congregação específica,
+            fica visível só para ela.
+          </p>
+        </form>
+      </Modal>
 
       {/* Preview inline */}
       {preview && (

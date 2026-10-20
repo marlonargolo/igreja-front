@@ -9,11 +9,12 @@ interface HeaderProps {
   crumbs: { label: string; to?: string }[]
   title: string
   searchPlaceholder?: string
+  hideSearch?: boolean
   action?: { label: string; icon?: ReactNode; onClick?: () => void }
   onOpenMobile: () => void
 }
 
-export function Header({ crumbs, title, searchPlaceholder = 'Buscar no painel...', action, onOpenMobile }: HeaderProps) {
+export function Header({ crumbs, title, searchPlaceholder = 'Buscar no painel...', hideSearch, action, onOpenMobile }: HeaderProps) {
   const navigate = useNavigate()
   const [openNotif, setOpenNotif] = useState(false)
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -92,13 +93,15 @@ export function Header({ crumbs, title, searchPlaceholder = 'Buscar no painel...
       </div>
 
       <div className="flex items-center gap-3 ml-auto">
-        <div className="relative hidden md:block">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-300" />
-          <input
-            placeholder={searchPlaceholder}
-            className="pl-9 pr-4 py-2.5 rounded-lg border border-brand-100 bg-white text-sm w-64 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 placeholder:text-brand-300"
-          />
-        </div>
+        {!hideSearch && (
+          <div className="relative hidden md:block">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-300" />
+            <input
+              placeholder={searchPlaceholder}
+              className="pl-9 pr-4 py-2.5 rounded-lg border border-brand-100 bg-white text-sm w-64 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 placeholder:text-brand-300"
+            />
+          </div>
+        )}
 
         {/* Sino de notificações — dados reais */}
         <div className="relative" ref={ref}>

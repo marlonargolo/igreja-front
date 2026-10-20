@@ -17,6 +17,14 @@ export interface AuthUser {
   avatar_url: string | null
   organization_id: string
   organizationName?: string  // Adicionado para compatibilidade
+  churchId?: number          // Igreja vinculada ao usuário (escopo do backend)
+  congregationId?: number    // Congregação vinculada ao usuário (escopo do backend)
+  /** false = restrito só a linkedCongregationIds, nunca vê a Igreja toda. */
+  accessMainChurch?: boolean
+  /** Congregações vinculadas (só relevante quando accessMainChurch === false). */
+  linkedCongregationIds?: number[]
+  /** Chaves dos módulos habilitados para a Igreja do usuário (Admin Externa → Módulos). */
+  enabledModules?: string[]
   roles: string[]  // Nossa API retorna array de strings
   permissions: string[]  // Nossa API retorna permissions
   churches: AuthChurch[]
@@ -41,6 +49,8 @@ export interface LoginResponse {
     email: string
     organizationId: string | number
     organizationName?: string
+    churchId?: number | null
+    congregationId?: number | null
     roles: string[]
     permissions: string[]
   }
@@ -66,6 +76,8 @@ export const authService = {
       avatar_url: null,
       organization_id: String(userData.organizationId),
       organizationName: userData.organizationName,
+      churchId: userData.churchId ?? undefined,
+      congregationId: userData.congregationId ?? undefined,
       roles: userData.roles || [],
       permissions: userData.permissions || [],
       churches: [],
@@ -84,7 +96,7 @@ export const authService = {
   async me(): Promise<AuthUser> {
     const res = await http.get<ApiSuccess<any>>('/auth/me')
     const userData = res.data
-    
+
     return {
       id: String(userData.id),
       name: userData.name || userData.username,
@@ -92,6 +104,11 @@ export const authService = {
       avatar_url: null,
       organization_id: String(userData.organizationId || userData.organization_id),
       organizationName: userData.organizationName,
+      churchId: userData.churchId ?? undefined,
+      congregationId: userData.congregationId ?? undefined,
+      accessMainChurch: userData.accessMainChurch ?? true,
+      linkedCongregationIds: userData.linkedCongregationIds || [],
+      enabledModules: userData.enabledModules,
       roles: userData.roles || [],
       permissions: userData.permissions || [],
       churches: [],
