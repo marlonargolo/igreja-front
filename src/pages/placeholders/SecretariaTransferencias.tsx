@@ -1,26 +1,28 @@
 /**
- * SecretariaTransferencias.tsx — Corrigido
+ * SecretariaTransferencias.tsx
  *
  * ISOLAMENTO:
  * - Membros: backend filtra pela Igreja do usuário automaticamente (sem churchId no request)
  * - Congregações destino: usa congregationsService (não churchesService)
  *   → backend retorna APENAS congregações da Igreja do usuário
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { ArrowRight } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Select, Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
+import { Table, Thead, Tr, Th, Td } from '@/components/ui/Table'
 import { useToast } from '@/components/ui/Extras'
-import { membersService } from '@/services'
+import { membersService, type MemberTransfer } from '@/services'
 import { congregationsService, type Congregation } from '@/services/congregations.service'
 
 export default function SecretariaTransferencias() {
   const showToast = useToast()
   const [members, setMembers]         = useState<any[]>([])
   const [congregations, setCongregations] = useState<Congregation[]>([])
+  const [transfers, setTransfers]     = useState<MemberTransfer[]>([])
   const [loading, setLoading]         = useState(true)
   const [open, setOpen]               = useState(false)
   const [saving, setSaving]           = useState(false)
@@ -28,8 +30,17 @@ export default function SecretariaTransferencias() {
     memberId: '',
     congregacaoDestino: '',
     motivo: '',
-    data: new Date().toISOString().split('T')[0],
   })
+
+  const loadTransfers = useCallback(async () => {
+    try {
+      const res = await membersService.listTransfers({ size: 50 })
+      const list = (res as any)?.data || []
+      setTransfers(Array.isArray(list) ? list : [])
+    } catch {
+      setTransfers([])
+    }
+  }, [])
 
   useEffect(() => {
     Promise.all([
@@ -37,6 +48,7 @@ export default function SecretariaTransferencias() {
       membersService.list({ size: 200 }),
       // congregationsService.list() — backend retorna APENAS as da Igreja do usuário
       congregationsService.list({ page: 0, size: 200 }),
+      loadTransfers(),
     ]).then(([mRes, cRes]) => {
       const mRaw = mRes as any
       const mList = mRaw?.data?.data || mRaw?.data?.content || mRaw?.data || []
@@ -49,7 +61,7 @@ export default function SecretariaTransferencias() {
       showToast('Falha ao carregar dados.')
       setMembers([])
     }).finally(() => setLoading(false))
-  }, [])
+  }, [loadTransfers])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -58,12 +70,26 @@ export default function SecretariaTransferencias() {
       return
     }
     setSaving(true)
-    // TODO: chamar endpoint de transferência quando implementado no backend
-    await new Promise(r => setTimeout(r, 800))
-    showToast('Transferência registrada com sucesso.')
-    setOpen(false)
-    setForm({ memberId: '', congregacaoDestino: '', motivo: '', data: new Date().toISOString().split('T')[0] })
-    setSaving(false)
+    try {
+      await membersService.transfer(Number(form.memberId), Number(form.congregacaoDestino), form.motivo)
+      showToast('Transferência registrada com sucesso.')
+      setOpen(false)
+      setForm({ memberId: '', congregacaoDestino: '', motivo: '' })
+      await Promise.all([loadTransfers(), reloadMembers()])
+    } catch (err: any) {
+      showToast(err?.response?.data?.message || 'Falha ao registrar a transferência.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function reloadMembers() {
+    try {
+      const mRes = await membersService.list({ size: 200 })
+      const mRaw = mRes as any
+      const mList = mRaw?.data?.data || mRaw?.data?.content || mRaw?.data || []
+      setMembers(Array.isArray(mList) ? mList : [])
+    } catch { /* mantém a lista anterior */ }
   }
 
   const selectedMember = members.find(m => String(m.id) === form.memberId)
@@ -79,7 +105,7 @@ export default function SecretariaTransferencias() {
         <CardBody className="pt-2">
           {loading ? (
             <div className="py-8 text-center text-brand-300">Carregando...</div>
-          ) : (
+          ) : transfers.length === 0 ? (
             <div className="py-8 text-center text-brand-300">
               Nenhuma transferência registrada.
               <br />
@@ -90,6 +116,27 @@ export default function SecretariaTransferencias() {
                 Registrar agora
               </button>
             </div>
+          ) : (
+            <Table>
+              <Thead>
+                <tr>
+                  <Th>Membro</Th><Th>De</Th><Th>Para</Th><Th>Motivo</Th><Th>Data</Th>
+                </tr>
+              </Thead>
+              <tbody>
+                {transfers.map(t => (
+                  <Tr key={t.id}>
+                    <Td className="font-semibold">{t.memberName}</Td>
+                    <Td className="text-brand-500">{t.fromCongregationName || '—'}</Td>
+                    <Td className="text-brand-500">{t.toCongregationName}</Td>
+                    <Td className="text-brand-500">{t.reason || '—'}</Td>
+                    <Td className="text-brand-500">
+                      {new Date(t.transferredAt).toLocaleDateString('pt-BR')}
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
           )}
         </CardBody>
       </Card>
@@ -132,17 +179,12 @@ export default function SecretariaTransferencias() {
             onChange={e => setForm({ ...form, congregacaoDestino: e.target.value })}
           >
             <option value="">— Selecione a congregação destino —</option>
-            {congregations.map(c => (
-              <option key={c.id} value={String(c.id)}>{c.name}</option>
-            ))}
+            {congregations
+              .filter(c => !selectedMember || String(c.id) !== String(selectedMember.congregationId))
+              .map(c => (
+                <option key={c.id} value={String(c.id)}>{c.name}</option>
+              ))}
           </Select>
-
-          <Input
-            label="Data da Transferência"
-            type="date"
-            value={form.data}
-            onChange={e => setForm({ ...form, data: e.target.value })}
-          />
 
           <div>
             <p className="text-sm font-semibold text-brand-900 mb-1.5">Motivo</p>

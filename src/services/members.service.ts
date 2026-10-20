@@ -52,6 +52,18 @@ export type CreateMemberPayload = {
 
 export type UpdateMemberPayload = Partial<CreateMemberPayload> & { status?: string }
 
+export interface MemberTransfer {
+  id: number
+  memberId: number
+  memberName: string
+  fromCongregationId?: number
+  fromCongregationName?: string
+  toCongregationId: number
+  toCongregationName: string
+  reason?: string
+  transferredAt: string
+}
+
 export const membersService = {
   async list(params: any = {}) {
     const churchId = localStorage.getItem('igrejahub_selected_church_id')
@@ -89,5 +101,21 @@ export const membersService = {
     )
     return res?.data?.avatarUrl || ''
   },
-  
+
+  // Transferência de membro entre Congregações da mesma Igreja.
+  async transfer(memberId: number, toCongregationId: number, reason?: string) {
+    const res = await http.post<ApiSuccess<MemberTransfer>>(`/members/${memberId}/transfer`, {
+      toCongregationId,
+      reason: reason || undefined,
+    })
+    return res.data
+  },
+
+  async listTransfers(params: { page?: number; size?: number } = {}) {
+    const res = await http.get<ApiSuccess<{ data: MemberTransfer[]; meta: any }>>('/members/transfers', {
+      page: params.page ?? 0,
+      size: params.size ?? 20,
+    })
+    return res.data
+  },
 }
