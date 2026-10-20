@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
-  Plus, Edit2, Trash2, Check, X, Loader2,
+  Plus, Edit2, Trash2, Check, Loader2,
   Users, Building2, UserCheck, Sparkles, AlertTriangle,
 } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
+import { AdminExternaLayout } from '@/components/admin-externa/AdminExternaLayout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Table, Thead, Tr, Th, Td } from '@/components/ui/Table'
 import { Badge } from '@/components/ui/Badge'
@@ -92,10 +93,20 @@ function formToPayload(f: FormState) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export default function Subscription() {
+interface SubscriptionProps {
+  /** Renderizado dentro da Administração Externa: usa AdminExternaLayout e a
+   *  Igreja vem do escopo global (seletor do topo), não da sessão do usuário. */
+  isAdminExterna?: boolean
+  /** Igreja em escopo na Administração Externa (null = modo global, nenhuma selecionada). */
+  scopeChurch?: { id: string | number; name: string } | null
+}
+
+export default function Subscription({ isAdminExterna, scopeChurch }: SubscriptionProps = {}) {
   const showToast = useToast()
-  const { user: currentUser, church: currentChurch } = useApp()
+  const { user: currentUser, church: appChurch } = useApp()
   const isRoot = currentUser?.roles?.includes('ROOT') ?? false
+  const currentChurch = isAdminExterna ? scopeChurch : appChurch
+  const LayoutComp: any = isAdminExterna ? AdminExternaLayout : Layout
 
   const [plans, setPlans] = useState<Plan[]>([])
   const [currentPlanId, setCurrentPlanId] = useState<number | null>(null)
@@ -233,13 +244,17 @@ export default function Subscription() {
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
+  const crumbs = isAdminExterna
+    ? [{ label: 'Administração Externa' }, { label: 'Assinatura' }]
+    : [{ label: 'Administração' }, { label: 'Planos' }]
+
   if (loading) {
     return (
-      <Layout crumbs={[{ label: 'Administração' }, { label: 'Planos' }]} title="Planos de Assinatura">
+      <LayoutComp crumbs={crumbs} title="Planos de Assinatura">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-brand-300" />
         </div>
-      </Layout>
+      </LayoutComp>
     )
   }
 
@@ -247,19 +262,24 @@ export default function Subscription() {
   const activePlans = plans.filter(p => p.active)
   const inactivePlans = plans.filter(p => !p.active)
 
+  const newPlanAction = isRoot
+    ? (isAdminExterna
+        ? <Button onClick={openCreate}><Plus className="h-4 w-4" /> Novo Plano</Button>
+        : { label: 'Novo Plano', icon: <Plus className="h-4 w-4" />, onClick: openCreate })
+    : undefined
+
   return (
-    <Layout
-      crumbs={[{ label: 'Administração' }, { label: 'Planos' }]}
-      title="Planos de Assinatura"
-      action={isRoot ? {
-        label: 'Novo Plano',
-        icon: <Plus className="h-4 w-4" />,
-        onClick: openCreate,
-      } : undefined}
-    >
+    <LayoutComp crumbs={crumbs} title="Planos de Assinatura" action={newPlanAction}>
+
+      {isAdminExterna && !currentChurch && (
+        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+          Selecione uma Igreja no seletor do topo para ver e trocar o plano dela. Sem Igreja selecionada,
+          esta tela só gerencia o catálogo de planos (criar, editar, desativar).
+        </div>
+      )}
 
       {/* ── Plano atual da Igreja ── */}
-      {currentPlan && (
+      {currentChurch && currentPlan && (
         <Card className="border-2 border-brand-800 mb-8">
           <CardBody className="pt-6">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -487,7 +507,7 @@ export default function Subscription() {
                     >
                       <Edit2 className="h-3.5 w-3.5" /> Editar
                     </Button>
-                    {!isCurrent && (
+                    {!isCurrent && currentChurch && (
                       <Button
                         size="sm"
                         className="flex-1"
@@ -712,6 +732,6 @@ export default function Subscription() {
         </div>
       </Modal>
 
-    </Layout>
+    </LayoutComp>
   )
 }

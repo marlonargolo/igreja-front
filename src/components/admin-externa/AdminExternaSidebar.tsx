@@ -5,18 +5,21 @@
 // uma central de controle global, separada do layout padrão do sistema.
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutGrid, Building2, MapPin, Users, FileText, Blocks,
+  LayoutGrid, Building2, FileText, Blocks, CreditCard,
   ScrollText, SlidersHorizontal, ChevronsLeft, ChevronsRight, X,
   ShieldHalf, LogOut, ArrowLeftRight,
 } from 'lucide-react'
 import { cn } from '@/lib/format'
 import { useApp } from '@/lib/AppContext'
 
+// "Congregações" e "Usuários" saíram daqui: eram entradas globais
+// redundantes com o acesso que já existe dentro de cada Igreja (Igrejas →
+// abrir uma Igreja → Congregações/Usuários daquela Igreja), duplicando
+// caminhos no menu sem necessidade.
 const NAV = [
   { to: '/admin-externa/painel', label: 'Painel Geral', icon: LayoutGrid },
   { to: '/admin-externa/igrejas', label: 'Igrejas', icon: Building2 },
-  { to: '/admin-externa/congregacoes', label: 'Congregações', icon: MapPin },
-  { to: '/admin-externa/usuarios', label: 'Usuários', icon: Users },
+  { to: '/admin-externa/assinatura', label: 'Assinatura', icon: CreditCard },
   { to: '/admin-externa/documentos', label: 'Documentações', icon: FileText },
   { to: '/admin-externa/modulos', label: 'Módulos', icon: Blocks },
   { to: '/admin-externa/auditoria', label: 'Auditoria', icon: ScrollText },

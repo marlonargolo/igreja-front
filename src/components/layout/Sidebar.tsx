@@ -81,11 +81,14 @@ const navPrincipal: NavItem[] = [
 // as Igrejas) nunca aparece aqui; ela é acessada exclusivamente pela tela de
 // seleção de Igrejas, através do botão exclusivo do ROOT. Só aparece pra
 // isAdmin (ROOT/ADMIN).
+// "Assinatura" saiu daqui: o catálogo de planos (/plans) sempre foi
+// exclusivo de ROOT no backend, então não fazia sentido num menu que
+// qualquer ADMIN de Igreja enxerga — agora vive só na Administração
+// Externa, junto do restante da gestão global.
 const navAdmin: NavItem[] = [
   {
     label: 'Administração', icon: Building2,
     children: [
-      { to: '/admin/assinatura', label: 'Assinatura' },
       { to: '/admin/aparencia', label: 'Aparência' },
       { to: '/admin/integracoes', label: 'Integrações' },
       { to: '/admin/backup', label: 'Backup' },

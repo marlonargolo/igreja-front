@@ -42,7 +42,6 @@ import PerfisPage from '@/pages/configuracoes/PerfisPage'
 import Subscription from '@/pages/Subscription'
 
 import CongregarcoesPage from '@/pages/configuracoes/CongregarcoesPage'
-import AdminAssinatura from '@/pages/admin/AdminAssinatura'
 import AdminAparencia from '@/pages/admin/AdminAparencia'
 import AdminIntegracoes from '@/pages/admin/AdminIntegracoes'
 import AdminBackup from '@/pages/admin/AdminBackup'
@@ -53,6 +52,7 @@ import ContabilidadeConfiguracoes from '@/pages/contabilidade/ContabilidadeConfi
 
 // Administração Externa (exclusiva ROOT)
 import PainelGeral from '@/pages/admin-externa/PainelGeral'
+import AdminExternaAssinatura from '@/pages/admin-externa/Assinatura'
 import Igrejas from '@/pages/admin-externa/Igrejas'
 import IgrejaDetalhe from '@/pages/admin-externa/IgrejaDetalhe'
 import Congregacoes from '@/pages/admin-externa/Congregacoes'
@@ -127,7 +127,6 @@ export default function App() {
             <Route path="/contabilidade/configuracoes" element={withChurch(<ContabilidadeConfiguracoes />)} />
 
             <Route path="/configuracoes/congregacoes" element={withChurch(<CongregarcoesPage />)} />
-            <Route path="/admin/assinatura" element={withChurch(<AdminAssinatura />)} />
             <Route path="/admin/aparencia" element={withChurch(<AdminAparencia />)} />
             <Route path="/admin/integracoes" element={withChurch(<AdminIntegracoes />)} />
             <Route path="/admin/backup" element={withChurch(<AdminBackup />)} />
@@ -137,6 +136,7 @@ export default function App() {
 
             {/* Administração Externa — exclusiva ROOT, sem exigir Igreja selecionada */}
             <Route path="/admin-externa/painel" element={withAdminExterna(<PainelGeral />)} />
+            <Route path="/admin-externa/assinatura" element={withAdminExterna(<AdminExternaAssinatura />)} />
             <Route path="/admin-externa/igrejas" element={withAdminExterna(<Igrejas />)} />
             <Route path="/admin-externa/igrejas/:id" element={withAdminExterna(<IgrejaDetalhe />)} />
             <Route path="/admin-externa/congregacoes" element={withAdminExterna(<Congregacoes />)} />
