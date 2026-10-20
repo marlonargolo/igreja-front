@@ -22,7 +22,7 @@ export default function MemberForm() {
     name: '', email: '', phone: '', rg: '', cpf: '',
     birthDate: '', gender: 'MASCULINO', maritalStatus: 'SOLTEIRO',
     profession: '', address: '', cargo: '', funcoesSelecionadas: [] as string[],
-    status: 'ACTIVE' as 'ACTIVE' | 'INACTIVE' | 'VISITOR',
+    status: 'ATIVO' as 'ATIVO' | 'INATIVO',
     baptismDate: '', memberSince: new Date().toISOString().split('T')[0], notes: '',
   })
   const [loading, setLoading] = useState(isEdit)
@@ -50,7 +50,7 @@ export default function MemberForm() {
             address: m.address || '',
             cargo: m.cargo || '',
             funcoesSelecionadas: m.funcoes ? m.funcoes.split(',').map((f: string) => f.trim()) : [],
-            status: m.status || 'ACTIVE',
+            status: m.status || 'ATIVO',
             baptismDate: m.baptismDate || '',
             memberSince: m.memberSince || new Date().toISOString().split('T')[0],
             notes: m.notes || '',
@@ -209,9 +209,8 @@ export default function MemberForm() {
               {CARGOS.map(c => <option key={c} value={c}>{c || '— Selecione —'}</option>)}
             </Select>
             <Select label="Status" value={formData.status} onChange={e => setFormData({ ...formData, status: e.target.value as any })}>
-              <option value="ACTIVE">Ativo</option>
-              <option value="INACTIVE">Inativo</option>
-              <option value="VISITOR">Visitante</option>
+              <option value="ATIVO">Ativo</option>
+              <option value="INATIVO">Inativo</option>
             </Select>
             <Input label="Data de Batismo" type="date" value={formData.baptismDate} onChange={e => setFormData({ ...formData, baptismDate: e.target.value })} />
             <Input label="Membro desde" type="date" value={formData.memberSince} onChange={e => setFormData({ ...formData, memberSince: e.target.value })} />

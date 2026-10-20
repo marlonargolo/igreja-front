@@ -1,7 +1,7 @@
 // src/pages/admin-externa/IgrejaDetalhe.tsx
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, MapPin, Phone, Mail, Users, FileText, ScrollText } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Mail, Users, FileText, ScrollText, Church as ChurchIcon } from 'lucide-react'
 import { AdminExternaLayout } from '@/components/admin-externa/AdminExternaLayout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -79,7 +79,24 @@ export default function IgrejaDetalhe() {
             </div>
           </Card>
 
-          <div className="grid lg:grid-cols-2 gap-6">
+          <div className="grid lg:grid-cols-3 gap-6">
+            <Card>
+              <CardHeader><CardTitle className="flex items-center gap-2"><ChurchIcon className="h-4 w-4" /> Congregações ({congregations.length})</CardTitle></CardHeader>
+              <CardBody className="pt-2">
+                {congregations.length === 0 ? <p className="text-sm text-brand-300 py-4">Nenhuma congregação cadastrada.</p> : (
+                  <div className="space-y-1">
+                    {congregations.slice(0, 8).map((c: any) => (
+                      <div key={c.id} className="flex items-center justify-between py-2 border-b border-brand-100 last:border-0">
+                        <p className="text-sm text-brand-800 font-medium">{c.name}</p>
+                        <span className="text-xs text-brand-300">{c.member_count ?? c.memberCount ?? 0} membros</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <Button variant="ghost" size="sm" className="mt-2" onClick={() => navigate(`/admin-externa/congregacoes?churchId=${church.id}`)}>Ver todas</Button>
+              </CardBody>
+            </Card>
+
             <Card>
               <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-4 w-4" /> Usuários ({users.length})</CardTitle></CardHeader>
               <CardBody className="pt-2">

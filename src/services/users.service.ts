@@ -79,9 +79,23 @@ export const usersService = {
     await http.delete(`/users/${id}`)
   },
 
-  async resetPassword(id: number) {
-    const res = await http.post<ApiSuccess<{ password?: string }>>(`/users/${id}/reset-password`)
+  // Redefine a senha de outro usuário sem exigir a senha atual dele — uso do
+  // administrador (distinto de changePassword, autoatendimento do próprio usuário).
+  async resetPassword(id: number, newPassword?: string) {
+    const res = await http.post<ApiSuccess<{ password?: string }>>(
+      `/users/${id}/reset-password`,
+      newPassword ? { newPassword } : undefined,
+    )
     return res.data
+  },
+
+  async getAccessMainChurch(id: number) {
+    const res = await http.get<ApiSuccess<{ accessMainChurch: boolean }>>(`/users/${id}/access-main-church`)
+    return res.data
+  },
+
+  async setAccessMainChurch(id: number, accessMainChurch: boolean) {
+    await http.put(`/users/${id}/access-main-church`, { accessMainChurch })
   },
 
   async changePassword(currentPassword: string, newPassword: string) {

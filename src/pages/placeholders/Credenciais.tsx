@@ -30,7 +30,7 @@ export default function Credenciais() {
   }, [])
 
   const filtered = members.filter(m =>
-    m.name.toLowerCase().includes(search.toLowerCase()) && m.status === 'ACTIVE'
+    m.name.toLowerCase().includes(search.toLowerCase()) && m.status?.toUpperCase() === 'ATIVO'
   )
 
   function toggle(id: number) {
@@ -80,7 +80,7 @@ export default function Credenciais() {
         </div>
         <div class="footer">
           <span>Emitida em ${new Date().toLocaleDateString('pt-BR')}</span>
-          <span>${m.status === 'ACTIVE' ? 'ATIVO' : 'INATIVO'}</span>
+          <span>${m.status?.toUpperCase() === 'ATIVO' ? 'ATIVO' : 'INATIVO'}</span>
         </div>
       </div>
     `).join('')

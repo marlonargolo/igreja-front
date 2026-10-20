@@ -6,17 +6,15 @@ import { Table, Thead, Tr, Th, Td } from '@/components/ui/Table'
 import { Badge } from '@/components/ui/Badge'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { Input, Select } from '@/components/ui/Input'
+import { Input, Switch } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/Extras'
 import { useApp } from '@/lib/AppContext'
 import { usersService } from '@/services'
-import { churchesService, type Church } from '@/services/churches.service'
 import { http } from '@/lib/http'
 import { cn } from '@/lib/format'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-interface ApiRole { id: number; name: string; description?: string }
 interface ApiUser {
   id: number; name: string; email: string
   active: boolean; roles: string[]; permissions: string[]
@@ -99,7 +97,7 @@ const MODULES = [
 
 export default function UsersPage() {
   const showToast = useToast()
-  const { user: currentUser, church: currentChurch, isRoot, hasPermission } = useApp()
+  const { church: currentChurch, isRoot, hasPermission } = useApp()
 
   const canCreate     = isRoot || hasPermission('USER_CREATE')
   const canEdit       = isRoot || hasPermission('USER_UPDATE')
@@ -107,8 +105,6 @@ export default function UsersPage() {
   const canManageCongAccess = isRoot || hasPermission('USER_CHURCH_TRANSFER')
 
   const [users, setUsers]             = useState<ApiUser[]>([])
-  const [availableRoles, setAvailableRoles] = useState<ApiRole[]>([])
-  const [allChurches, setAllChurches] = useState<Church[]>([])
   const [congregations, setCongregations] = useState<Congregation[]>([])
   const [loading, setLoading]         = useState(true)
 
@@ -116,10 +112,7 @@ export default function UsersPage() {
   const [open, setOpen]       = useState(false)
   const [editing, setEditing] = useState<ApiUser | null>(null)
   const [saving, setSaving]   = useState(false)
-  const [form, setForm]       = useState({
-    name: '', email: '', password: '', newPassword: '',
-    roleName: '', churchId: '', congregationId: '',
-  })
+  const [form, setForm]       = useState({ name: '', email: '', password: '', newPassword: '' })
 
   // Modal permissões
   const [permOpen, setPermOpen]           = useState(false)
@@ -129,10 +122,11 @@ export default function UsersPage() {
   const [permLoading, setPermLoading]     = useState(false)
   const [permSaving, setPermSaving]       = useState(false)
 
-  // Modal congregações vinculadas
+  // Modal congregações vinculadas + acesso à Igreja principal (sede)
   const [congOpen, setCongOpen]                 = useState(false)
   const [congModalUser, setCongModalUser]       = useState<ApiUser | null>(null)
   const [selectedCongIds, setSelectedCongIds]   = useState<Set<number>>(new Set())
+  const [accessMainChurch, setAccessMainChurch] = useState(true)
   const [congModalLoading, setCongModalLoading] = useState(false)
   const [congModalSaving, setCongModalSaving]   = useState(false)
 
@@ -143,19 +137,10 @@ export default function UsersPage() {
   async function loadAll() {
     setLoading(true)
     try {
-      const [uRes, rolesRes] = await Promise.all([
-        usersService.list({ size: 200 }),
-        http.get<any>('/roles/available'),
-      ])
+      const uRes = await usersService.list({ size: 200 })
       const raw = uRes as any
       setUsers(raw?.data || raw?.content || [])
-      const rolesRaw = rolesRes?.data
-      setAvailableRoles(rolesRaw?.data || rolesRaw || [])
 
-      if (isRoot) {
-        const churches = await churchesService.list()
-        setAllChurches(Array.isArray(churches) ? churches : [])
-      }
       if (currentChurch?.id) await loadCongregations(Number(currentChurch.id))
     } catch { showToast('Falha ao carregar dados.') }
     finally { setLoading(false) }
@@ -174,21 +159,13 @@ export default function UsersPage() {
 
   function openNew() {
     setEditing(null)
-    setForm({
-      name: '', email: '', password: '', newPassword: '',
-      roleName: availableRoles[availableRoles.length - 1]?.name || '',
-      churchId: '', congregationId: '',
-    })
+    setForm({ name: '', email: '', password: '', newPassword: '' })
     setOpen(true)
   }
 
   function openEdit(u: ApiUser) {
     setEditing(u)
-    setForm({
-      name: u.name, email: u.email, password: '', newPassword: '',
-      roleName: u.roles?.[0] || '',
-      churchId: '', congregationId: '',
-    })
+    setForm({ name: u.name, email: u.email, password: '', newPassword: '' })
     setOpen(true)
   }
 
@@ -198,12 +175,9 @@ export default function UsersPage() {
     setSaving(true)
     try {
       if (editing) {
-        await usersService.update(editing.id, {
-          name: form.name,
-          ...(form.roleName ? { roleName: form.roleName } : {}),
-        } as any)
-        if (form.newPassword?.length >= 6) {
-          try { await usersService.changePassword(form.password, form.newPassword) }
+        await usersService.update(editing.id, { name: form.name })
+        if (form.newPassword?.length >= 8) {
+          try { await usersService.resetPassword(editing.id, form.newPassword) }
           catch { showToast('Dados salvos, mas falha ao trocar a senha.') }
         }
         showToast('Usuário atualizado.')
@@ -211,15 +185,13 @@ export default function UsersPage() {
         if (!form.email || !form.password) {
           showToast('E-mail e senha são obrigatórios.'); setSaving(false); return
         }
-        const payload: any = {
-          name: form.name, email: form.email,
-          password: form.password, active: true,
-          roleName: form.roleName || undefined,
-        }
-        if (isRoot && form.churchId)       payload.churchId       = Number(form.churchId)
-        if (form.congregationId)           payload.congregationId = Number(form.congregationId)
-        await usersService.create(payload)
-        showToast('Usuário criado.')
+        // Perfil de acesso e vínculo com Igreja/Congregação não entram mais
+        // no cadastro — são configurados depois via "Permissões" e
+        // "Congregações" na listagem, com o usuário já criado.
+        await usersService.create({
+          name: form.name, email: form.email, password: form.password, active: true,
+        })
+        showToast('Usuário criado. Configure as permissões e o acesso a unidades na listagem.')
       }
       setOpen(false)
       loadAll()
@@ -286,10 +258,14 @@ export default function UsersPage() {
     setCongOpen(true)
     setCongModalLoading(true)
     try {
-      const res = await http.get<any>(`/users/${u.id}/congregations`)
-      const raw = res?.data
+      const [congRes, mainChurchRes] = await Promise.all([
+        http.get<any>(`/users/${u.id}/congregations`),
+        usersService.getAccessMainChurch(u.id),
+      ])
+      const raw = congRes?.data
       const list: any[] = raw?.data || raw || []
       setSelectedCongIds(new Set(list.map((c: any) => Number(c.id))))
+      setAccessMainChurch((mainChurchRes as any)?.accessMainChurch ?? true)
     } catch { showToast('Falha ao carregar congregações vinculadas.') }
     finally { setCongModalLoading(false) }
   }
@@ -306,11 +282,14 @@ export default function UsersPage() {
     if (!congModalUser) return
     setCongModalSaving(true)
     try {
-      await http.put(`/users/${congModalUser.id}/congregations`, Array.from(selectedCongIds))
-      showToast(`Congregações de ${congModalUser.name} atualizadas.`)
+      await Promise.all([
+        http.put(`/users/${congModalUser.id}/congregations`, Array.from(selectedCongIds)),
+        usersService.setAccessMainChurch(congModalUser.id, accessMainChurch),
+      ])
+      showToast(`Unidades de acesso de ${congModalUser.name} atualizadas.`)
       setCongOpen(false)
     } catch (err: any) {
-      showToast(err?.response?.data?.message || 'Falha ao salvar congregações.')
+      showToast(err?.response?.data?.message || 'Falha ao salvar.')
     } finally { setCongModalSaving(false) }
   }
 
@@ -394,7 +373,7 @@ export default function UsersPage() {
                           {canManageCongAccess && (
                             <button onClick={() => openCongregations(u)}
                               className="p-1.5 rounded hover:bg-blue-50 text-blue-400"
-                              title="Vincular Congregações">
+                              title="Unidades de acesso">
                               <Building2 className="h-3.5 w-3.5" />
                             </button>
                           )}
@@ -434,67 +413,22 @@ export default function UsersPage() {
             onChange={e => setForm({ ...form, email: e.target.value })}
             required={!editing} disabled={!!editing} />
           {editing ? (
-            <>
-              <Input label="Senha Atual (deixe em branco para não alterar)" type="password"
-                value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
-              <Input label="Nova Senha" type="password" value={form.newPassword}
-                onChange={e => setForm({ ...form, newPassword: e.target.value })}
-                placeholder="Mínimo 8 caracteres" />
-            </>
+            // Troca de senha pelo administrador: não exige a senha atual do
+            // usuário editado (uso típico é redefinir a senha de alguém que
+            // a esqueceu). Chama o reset administrativo, não o autoatendimento.
+            <Input label="Nova Senha (deixe em branco para não alterar)" type="password"
+              value={form.newPassword} onChange={e => setForm({ ...form, newPassword: e.target.value })}
+              placeholder="Mínimo 8 caracteres" />
           ) : (
             <Input label="Senha" type="password" value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })} required />
           )}
 
-          {/* Perfil: texto livre com sugestões dinâmicas — só na criação.
-              Na edição esse campo já não tinha efeito nenhum (o backend só lê
-              roleIds, nunca o nome livre enviado daqui), por isso foi removido. */}
-          {!editing && (
-            <div>
-              <label className="block text-sm font-semibold text-brand-900 mb-1.5">Perfil de Acesso</label>
-              <input list="roles-list" value={form.roleName}
-                onChange={e => setForm({ ...form, roleName: e.target.value })}
-                placeholder="Digite ou selecione um perfil..."
-                className="w-full rounded-lg border border-brand-100 bg-white px-3.5 py-2.5 text-sm text-brand-900 placeholder:text-brand-300 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" />
-              <datalist id="roles-list">
-                {availableRoles.map(r => <option key={r.id} value={r.name} />)}
-              </datalist>
-            </div>
-          )}
-
-          {/* ROOT: seleciona a Igreja */}
-          {!editing && isRoot && (
-            <Select label="Igreja *" value={form.churchId}
-              onChange={async e => {
-                const val = e.target.value
-                setForm({ ...form, churchId: val, congregationId: '' })
-                if (val) await loadCongregations(Number(val))
-              }}>
-              <option value="">Selecione uma Igreja...</option>
-              {allChurches.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-            </Select>
-          )}
-
-          {/* Congregação opcional */}
-          {!editing &&
-           !currentUser?.roles?.includes('PASTOR_CONGREGACAO') &&
-           congregations.length > 0 && (
-            <Select label="Vincular a Congregação (opcional)"
-              value={form.congregationId}
-              onChange={e => setForm({ ...form, congregationId: e.target.value })}>
-              <option value="">Acesso à Igreja toda</option>
-              {congregations
-                .filter(c => !form.churchId || String(c.churchId) === form.churchId)
-                .map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
-            </Select>
-          )}
-
           {!editing && (
             <p className="text-xs text-brand-400 bg-brand-50 rounded-lg px-3 py-2">
-              {isRoot ? 'Selecione a Igreja de destino. Congregação é opcional.'
-                : currentUser?.roles?.includes('PASTOR_CONGREGACAO')
-                ? 'O usuário será vinculado à sua congregação automaticamente.'
-                : 'O usuário será vinculado à sua Igreja automaticamente.'}
+              O usuário é criado sem perfil de acesso nem vínculo com Igreja/Congregação definidos aqui.
+              Depois de criado, use as ações "Permissões" e "Congregações" na listagem para configurar
+              o que ele pode acessar.
             </p>
           )}
         </form>
@@ -608,16 +542,16 @@ export default function UsersPage() {
         )}
       </Modal>
 
-      {/* ── Modal congregações vinculadas ── */}
+      {/* ── Modal unidades de acesso (Igreja principal + congregações) ── */}
       <Modal open={congOpen} onClose={() => setCongOpen(false)}
-        title={`Congregações — ${congModalUser?.name}`}
+        title={`Unidades de acesso — ${congModalUser?.name}`}
         footer={
           <>
             <Button variant="outline" onClick={() => setCongOpen(false)}>Cancelar</Button>
             <Button onClick={saveCongregations} disabled={congModalSaving}>
               {congModalSaving
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> Salvando...</>
-                : <><Building2 className="h-4 w-4" /> Salvar Congregações</>}
+                : <><Building2 className="h-4 w-4" /> Salvar</>}
             </Button>
           </>
         }
@@ -628,9 +562,19 @@ export default function UsersPage() {
           </div>
         ) : (
           <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
-            <p className="text-xs text-brand-400 mb-4">
-              Marque as congregações, além da Igreja principal, que este usuário poderá acessar.
+            <p className="text-xs text-brand-400 mb-3">
+              Marque as unidades que este usuário poderá acessar. O acesso à Igreja principal (sede) é
+              opcional: desligue-o se ele deve ficar restrito só às congregações marcadas abaixo.
             </p>
+
+            <div className="flex items-center justify-between rounded-lg border border-brand-100 px-3 py-2.5 mb-3">
+              <div>
+                <p className="text-sm font-medium text-brand-900">Igreja principal (sede)</p>
+                <p className="text-xs text-brand-400">Acesso a todos os dados da Igreja, não só de uma congregação.</p>
+              </div>
+              <Switch checked={accessMainChurch} onChange={setAccessMainChurch} />
+            </div>
+
             {congregations.length === 0 ? (
               <p className="text-sm text-brand-300 py-4 text-center">Nenhuma congregação cadastrada nesta Igreja.</p>
             ) : (

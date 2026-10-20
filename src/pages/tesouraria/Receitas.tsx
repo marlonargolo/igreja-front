@@ -53,8 +53,8 @@ export default function Receitas() {
         // Categorias filtradas por tipo REVENUE e pela Igreja do usuário (header)
         http.get<any>('/finance/categories/active', { type: 'REVENUE' }),
         http.get<any>('/finance/accounts/active'),
-        // Membros da Igreja (backend filtra pelo header X-Church-Id)
-        http.get<any>('/members', { page: 0, size: 500, status: 'ACTIVE' }),
+        // Membros ativos da Igreja (backend filtra pelo header X-Church-Id)
+        http.get<any>('/members', { page: 0, size: 500, status: 'ATIVO' }),
       ])
 
       const txRaw = txRes as any

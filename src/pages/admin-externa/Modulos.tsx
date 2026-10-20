@@ -1,27 +1,40 @@
 // src/pages/admin-externa/Modulos.tsx
 //
-// Visualização dos módulos disponíveis no sistema e, quando uma Igreja está
-// selecionada no seletor global, habilitação/desabilitação por Igreja
-// (integrada ao plano contratado).
+// Painel operacional dos módulos: com uma Igreja selecionada no seletor
+// global, cada módulo vira um atalho pra entrar direto nas funções daquela
+// Igreja (ex.: abrir a Contabilidade dela), em vez de só ligar/desligar um
+// interruptor. O que está liberado pra cada Igreja continua vindo do plano
+// contratado dela (Administração Externa → Assinatura); esta tela não
+// habilita nada, só navega.
 import { useEffect, useState } from 'react'
-import { Blocks, AlertCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Blocks, AlertCircle, ArrowRight } from 'lucide-react'
 import { AdminExternaLayout } from '@/components/admin-externa/AdminExternaLayout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Switch } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
 import { EmptyState } from '@/components/ui/Misc'
-import { useToast } from '@/components/ui/Extras'
 import { useAdminExterna } from '@/lib/AdminExternaContext'
+import { useApp } from '@/lib/AppContext'
 import { adminService, type SystemModule } from '@/services/admin.service'
 
+// Tela de destino de cada módulo, dentro do layout normal da Igreja.
+const MODULE_ROUTES: Record<string, string> = {
+  SECRETARIA: '/membros',
+  TESOURARIA: '/tesouraria/receitas',
+  PATRIMONIO: '/patrimonio',
+  CONTABILIDADE: '/contabilidade/fechamento',
+  SUPORTE: '/suporte/chamados',
+}
+
 export default function Modulos() {
-  const showToast = useToast()
-  const { mode, scopeChurchId, scopeChurch } = useAdminExterna()
+  const navigate = useNavigate()
+  const { mode, scopeChurch } = useAdminExterna()
+  const { setChurch } = useApp()
   const [modules, setModules] = useState<SystemModule[]>([])
-  const [churchModules, setChurchModules] = useState<SystemModule[]>([])
   const [loading, setLoading] = useState(true)
   const [unavailable, setUnavailable] = useState(false)
 
-  useEffect(() => { load() }, [scopeChurchId])
+  useEffect(() => { load() }, [])
 
   async function load() {
     setLoading(true)
@@ -31,32 +44,25 @@ export default function Modulos() {
       setModules(list)
       if (list.length === 0) setUnavailable(true)
     } catch { setUnavailable(true) }
-
-    if (scopeChurchId) {
-      try { setChurchModules(await adminService.churchModules(scopeChurchId)) }
-      catch { setChurchModules([]) }
-    } else {
-      setChurchModules([])
-    }
     setLoading(false)
   }
 
-  async function toggle(mod: SystemModule, enabled: boolean) {
-    if (!scopeChurchId) return
-    try {
-      await adminService.setChurchModule(scopeChurchId, mod.id, enabled)
-      setChurchModules(prev => prev.map(m => m.id === mod.id ? { ...m, enabled } : m))
-      showToast(`Módulo "${mod.name}" ${enabled ? 'habilitado' : 'desabilitado'} para ${scopeChurch?.name}.`)
-    } catch { showToast('Falha ao alterar o módulo.') }
+  function operate(mod: SystemModule) {
+    if (!scopeChurch) return
+    const route = MODULE_ROUTES[mod.key]
+    if (!route) return
+    setChurch({
+      id: String(scopeChurch.id), name: scopeChurch.name,
+      city: scopeChurch.city || '', state: scopeChurch.state || '', logoUrl: scopeChurch.logoUrl || null,
+    })
+    navigate(route)
   }
-
-  const isEnabled = (mod: SystemModule) => churchModules.find(m => m.id === mod.id)?.enabled ?? mod.enabled ?? true
 
   return (
     <AdminExternaLayout crumbs={[{ label: 'Módulos' }]} title="Módulos">
       {mode === 'global' && (
         <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
-          Selecione uma Igreja no seletor do topo para habilitar ou desabilitar módulos específicos para ela.
+          Selecione uma Igreja no seletor do topo para operar os módulos dela diretamente por aqui.
         </div>
       )}
 
@@ -81,10 +87,12 @@ export default function Modulos() {
               </CardHeader>
               <CardBody className="pt-1">
                 {mod.description && <p className="text-sm text-brand-400 mb-3">{mod.description}</p>}
-                {scopeChurchId ? (
-                  <Switch checked={isEnabled(mod)} onChange={v => toggle(mod, v)} label={isEnabled(mod) ? 'Habilitado' : 'Desabilitado'} />
+                {scopeChurch ? (
+                  <Button variant="outline" size="sm" className="w-full" onClick={() => operate(mod)}>
+                    Operar em {scopeChurch.name} <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
                 ) : (
-                  <p className="text-xs text-brand-300">Selecione uma igreja para gerenciar</p>
+                  <p className="text-xs text-brand-300">Selecione uma igreja para operar</p>
                 )}
               </CardBody>
             </Card>
