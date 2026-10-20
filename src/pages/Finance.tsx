@@ -1,6 +1,5 @@
-import { useMemo, useState, useEffect } from 'react'
-import { Plus, ArrowLeftRight, Edit2, Trash2, Paperclip } from 'lucide-react'
-import { useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Plus, Paperclip } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Table, Thead, Tr, Th, Td } from '@/components/ui/Table'
@@ -10,144 +9,101 @@ import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { formatCurrency } from '@/lib/format'
 import { useToast } from '@/components/ui/Extras'
-import { financeService, type Transaction } from '@/services'
-import { http } from '@/lib/http'
-import type { ApiSuccess } from '@/types/api'
-import { useConfig } from '@/lib/ConfigContext'
+import { financeAccountsService, type FinancialAccount, type FinancialTransfer } from '@/services/financeAccounts.service'
+import { churchesService, type Church } from '@/services/churches.service'
 import { useApp } from '@/lib/AppContext'
-
-const CATEGORIAS_TRANSFERENCIA = [
-  'Transferência entre Contas',
-  'Repasse à Sede (Redízimo)',
-  'Transferência entre Congregações',
-]
-
-interface FinancialAccount {
-  id: number
-  name: string
-  type: string
-  bankName?: string
-  currentBalance?: number
-}
 
 export default function Finance() {
   const showToast = useToast()
-  const { contasECaixas } = useConfig()
-  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const { isRoot } = useApp()
+  const [transfers, setTransfers] = useState<FinancialTransfer[]>([])
+  const [accounts, setAccounts] = useState<FinancialAccount[]>([])
+  const [churches, setChurches] = useState<Church[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [editingId, setEditingId] = useState<number | null>(null)
   const [comprovante, setComprovante] = useState<File | null>(null)
   const [form, setForm] = useState({
-    description: '',
+    churchOrigemId: '',
+    contaOrigemId: '',
+    churchDestinoId: '',
+    contaDestinoId: '',
     amount: '',
     date: new Date().toISOString().split('T')[0],
-    category: CATEGORIAS_TRANSFERENCIA[0],
-    contaOrigemId: '',
-    contaDestinoId: '',
+    description: '',
   })
-  const { church } = useApp()
-  
 
   useEffect(() => { loadAll() }, [])
 
   async function loadAll() {
-  setLoading(true)
-  try {
-    const txRes = await financeService.list({ size: 100, type: 'EXPENSE' }) as any
-    const list = txRes?.data?.data || txRes?.data?.content || txRes?.data || txRes || []
-    const safeList = Array.isArray(list) ? list : []
-    setTransactions(safeList.filter((t: Transaction) => isTransfer(t)))
-  } catch {
-    showToast('Falha ao carregar transferências.')
-    setTransactions([])
-  } finally {
-    setLoading(false)
+    setLoading(true)
+    try {
+      const [transfersData, accountsData] = await Promise.all([
+        financeAccountsService.listTransfers({ size: 100 }),
+        financeAccountsService.listActive(),
+      ])
+      setTransfers(transfersData)
+      setAccounts(accountsData)
+      // Igreja Origem/Destino só fazem sentido pra quem enxerga mais de uma
+      // Igreja (ROOT) — os demais sempre transferem dentro da própria Igreja.
+      if (isRoot) {
+        const churchList = await churchesService.list()
+        setChurches(Array.isArray(churchList) ? churchList : [])
+      }
+    } catch {
+      showToast('Falha ao carregar transferências.')
+      setTransfers([])
+      setAccounts([])
+    } finally {
+      setLoading(false)
+    }
   }
-}
 
-  function isTransfer(t: Transaction) {
-    const cat = (t.categoryName || t.description || '').toLowerCase()
-    return cat.includes('transfer') || cat.includes('repasse') || cat.includes('redízimo')
-  }
-
-  const total = useMemo(() => transactions.reduce((s, t) => s + Number(t.amount), 0), [transactions])
+  const total = transfers.reduce((s, t) => s + Number(t.amount), 0)
 
   function resetForm() {
     setForm({
-      description: '',
-      amount: '',
-      date: new Date().toISOString().split('T')[0],
-      category: CATEGORIAS_TRANSFERENCIA[0],
-      contaOrigemId: '',
-      contaDestinoId: '',
+      churchOrigemId: '', contaOrigemId: '', churchDestinoId: '', contaDestinoId: '',
+      amount: '', date: new Date().toISOString().split('T')[0], description: '',
     })
     setComprovante(null)
-    setEditingId(null)
   }
 
-  function openEdit(t: Transaction) {
-    setEditingId(t.id)
-    setForm({
-      description: t.description,
-      amount: String(t.amount),
-      date: t.transactionDate,
-      category: t.categoryName || CATEGORIAS_TRANSFERENCIA[0],
-      contaOrigemId: String((t as any).accountId || ''),
-      contaDestinoId: '',
-    })
-    setComprovante(null)
-    setOpen(true)
-  }
-
-  async function handleDelete(id: number) {
-    if (!confirm('Excluir esta transferência?')) return
-    try {
-      await financeService.delete(id)
-      showToast('Transferência excluída.')
-      loadAll()
-    } catch {
-      showToast('Falha ao excluir.')
-    }
+  // Contas filtradas pela Igreja selecionada (só relevante pra ROOT, que vê
+  // contas de várias Igrejas); sem Igreja escolhida, mostra todas as contas
+  // a que o usuário tem acesso.
+  function accountsFor(churchId: string) {
+    if (!churchId) return accounts
+    return accounts.filter(a => String(a.churchId ?? '') === churchId)
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!form.contaOrigemId || !form.contaDestinoId) {
+      showToast('Selecione a conta de origem e a de destino.')
+      return
+    }
+    if (form.contaOrigemId === form.contaDestinoId) {
+      showToast('Conta de origem e destino não podem ser iguais.')
+      return
+    }
     if (!form.amount) { showToast('Informe o valor.'); return }
-
-    const origemNome = form.contaOrigemId || ''
-    const destinoNome = form.contaDestinoId || ''
-    const desc = origemNome && destinoNome
-      ? `${form.category}: ${origemNome} → ${destinoNome}${form.description ? ' — ' + form.description : ''}`
-      : form.description || form.category
 
     setSubmitting(true)
     try {
-      if (editingId) {
-        await financeService.update(editingId, {
-          description: desc,
-          amount: parseFloat(form.amount),
-          transactionDate: form.date,
-        } as any)
-        showToast('Transferência atualizada.')
-      } else {
-        await financeService.create({
-          churchId: church?.id ? Number(church.id) : undefined,
-          type: 'EXPENSE',
-          description: desc,
-          amount: parseFloat(form.amount),
-          transactionDate: form.date,
-          categoryId: 1,
-          accountId: form.contaOrigemId ? Number(form.contaOrigemId) : 1,
-        } as any)
-        showToast('Transferência registrada.')
-      }
+      await financeAccountsService.createTransfer({
+        fromAccountId: Number(form.contaOrigemId),
+        toAccountId: Number(form.contaDestinoId),
+        amount: parseFloat(form.amount),
+        transferDate: form.date,
+        description: form.description || undefined,
+      })
+      showToast('Transferência registrada.')
       setOpen(false)
       resetForm()
       loadAll()
-    } catch {
-      showToast('Falha ao salvar transferência.')
+    } catch (err: any) {
+      showToast(err?.response?.data?.message || 'Falha ao registrar a transferência.')
     } finally {
       setSubmitting(false)
     }
@@ -166,7 +122,7 @@ export default function Finance() {
         </div>
         <div className="bg-white rounded-2xl border border-brand-100 shadow-card p-5">
           <p className="text-xs text-brand-300 mb-1">Lançamentos</p>
-          <p className="text-2xl font-extrabold text-brand-900">{transactions.length}</p>
+          <p className="text-2xl font-extrabold text-brand-900">{transfers.length}</p>
         </div>
       </div>
 
@@ -175,7 +131,7 @@ export default function Finance() {
         <CardBody className="pt-2">
           {loading ? (
             <div className="py-8 text-center text-brand-300">Carregando...</div>
-          ) : transactions.length === 0 ? (
+          ) : transfers.length === 0 ? (
             <div className="py-8 text-center text-brand-300">
               Nenhuma transferência registrada.
               <br />
@@ -186,25 +142,22 @@ export default function Finance() {
           ) : (
             <Table>
               <Thead>
-                <tr><Th>Data</Th><Th>Descrição</Th><Th>Valor</Th><Th>Status</Th><Th>Ações</Th></tr>
+                <tr><Th>Data</Th><Th>Origem</Th><Th>Destino</Th><Th>Valor</Th><Th>Status</Th></tr>
               </Thead>
               <tbody>
-                {transactions.map(t => (
+                {transfers.map(t => (
                   <Tr key={t.id}>
-                    <Td>{new Date(t.transactionDate).toLocaleDateString('pt-BR')}</Td>
-                    <Td className="font-semibold">{t.description}</Td>
+                    <Td>{new Date(t.transferDate).toLocaleDateString('pt-BR')}</Td>
+                    <Td className="font-semibold">
+                      {t.fromAccountName}
+                      {t.fromChurchName && <span className="block text-xs text-brand-300 font-normal">{t.fromChurchName}</span>}
+                    </Td>
+                    <Td className="font-semibold">
+                      {t.toAccountName}
+                      {t.toChurchName && <span className="block text-xs text-brand-300 font-normal">{t.toChurchName}</span>}
+                    </Td>
                     <Td className="font-semibold">{formatCurrency(t.amount)}</Td>
                     <Td><Badge tone={t.status === 'CONFIRMED' ? 'green' : 'yellow'}>{t.status}</Badge></Td>
-                    <Td>
-                      <div className="flex gap-1">
-                        <button onClick={() => openEdit(t)} className="p-1.5 rounded hover:bg-brand-50 text-brand-400" title="Editar">
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button onClick={() => handleDelete(t.id)} className="p-1.5 rounded hover:bg-red-50 text-red-400" title="Excluir">
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </Td>
                   </Tr>
                 ))}
               </tbody>
@@ -216,51 +169,74 @@ export default function Finance() {
       <Modal
         open={open}
         onClose={() => { setOpen(false); resetForm() }}
-        title={editingId ? 'Editar Transferência' : 'Nova Transferência'}
+        title="Nova Transferência"
         footer={
           <>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
             <Button onClick={handleSubmit} disabled={submitting}>
-              {submitting ? 'Salvando...' : editingId ? 'Salvar' : 'Registrar'}
+              {submitting ? 'Salvando...' : 'Registrar'}
             </Button>
           </>
         }
       >
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Select
-            label="Categoria"
-            value={form.category}
-            onChange={e => setForm({ ...form, category: e.target.value })}
-          >
-            {CATEGORIAS_TRANSFERENCIA.map(c => <option key={c} value={c}>{c}</option>)}
-          </Select>
-
-          {/* Contas cadastradas */}
           <div className="grid grid-cols-2 gap-4">
+            {isRoot && (
+              <Select
+                label="Igreja Origem"
+                value={form.churchOrigemId}
+                onChange={e => setForm({ ...form, churchOrigemId: e.target.value, contaOrigemId: '' })}
+              >
+                <option value="">— Todas as Igrejas —</option>
+                {churches.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+              </Select>
+            )}
             <Select
               label="Conta Origem"
               value={form.contaOrigemId}
               onChange={e => setForm({ ...form, contaOrigemId: e.target.value })}
             >
               <option value="">— Selecione —</option>
-              {contasECaixas.map(c => (
-                <option key={c} value={c}>{c}</option>
+              {accountsFor(form.churchOrigemId).map(a => (
+                <option key={a.id} value={String(a.id)}>
+                  {a.name}{a.churchName ? ` — ${a.churchName}` : ''}
+                </option>
               ))}
             </Select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {isRoot && (
+              <Select
+                label="Igreja Destino"
+                value={form.churchDestinoId}
+                onChange={e => setForm({ ...form, churchDestinoId: e.target.value, contaDestinoId: '' })}
+              >
+                <option value="">— Todas as Igrejas —</option>
+                {churches.map(c => <option key={c.id} value={String(c.id)}>{c.name}</option>)}
+              </Select>
+            )}
             <Select
               label="Conta Destino"
               value={form.contaDestinoId}
               onChange={e => setForm({ ...form, contaDestinoId: e.target.value })}
             >
               <option value="">— Selecione —</option>
-              {contasECaixas
-                .filter(c => c !== form.contaOrigemId)
-                .map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))
-              }
+              {accountsFor(form.churchDestinoId)
+                .filter(a => String(a.id) !== form.contaOrigemId)
+                .map(a => (
+                  <option key={a.id} value={String(a.id)}>
+                    {a.name}{a.churchName ? ` — ${a.churchName}` : ''}
+                  </option>
+                ))}
             </Select>
           </div>
+
+          {accounts.length === 0 && (
+            <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+              Nenhuma conta financeira ativa encontrada. Cadastre uma conta antes de registrar uma transferência.
+            </p>
+          )}
 
           <Input
             label="Observação"
