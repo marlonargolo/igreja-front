@@ -8,14 +8,15 @@ import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/hooks/useToast'
 import { reportsService, type ReportJob } from '@/services'
+import type { ReportType } from '@/services/reports.service'
 
-const reportCards = [
-  { title: 'Relatório de Membros', category: 'Membros', color: 'bg-blue-50 text-blue-600' },
-  { title: 'Relatório Financeiro', category: 'Financeiro', color: 'bg-green-50 text-green-600' },
-  { title: 'Relatório de Congregações', category: 'Membros', color: 'bg-purple-50 text-purple-600' },
-  { title: 'Relatório de Patrimônio', category: 'Patrimônio', color: 'bg-yellow-50 text-yellow-600' },
-  { title: 'Relatório Contábil', category: 'Contábil', color: 'bg-red-50 text-red-600' },
-  { title: 'Relatório de Atividades', category: 'Atividades', color: 'bg-indigo-50 text-indigo-600' },
+const reportCards: { type: ReportType; title: string; category: string; color: string }[] = [
+  { type: 'MEMBERS', title: 'Relatório de Membros', category: 'Membros', color: 'bg-blue-50 text-blue-600' },
+  { type: 'FINANCIAL', title: 'Relatório Financeiro', category: 'Financeiro', color: 'bg-green-50 text-green-600' },
+  { type: 'CONGREGATIONS', title: 'Relatório de Congregações', category: 'Membros', color: 'bg-purple-50 text-purple-600' },
+  { type: 'ASSETS', title: 'Relatório de Patrimônio', category: 'Patrimônio', color: 'bg-yellow-50 text-yellow-600' },
+  { type: 'ACCOUNTING', title: 'Relatório Contábil', category: 'Contábil', color: 'bg-red-50 text-red-600' },
+  { type: 'ACTIVITIES', title: 'Relatório de Atividades', category: 'Atividades', color: 'bg-indigo-50 text-indigo-600' },
 ]
 
 const icons: Record<string, any> = {
@@ -47,18 +48,26 @@ export default function Reports() {
       .finally(() => setLoading(false))
   }, [])
 
-  async function generateReport(type: string) {
+  async function downloadReport(id: string) {
+    try {
+      window.open(await reportsService.downloadUrl(id), '_blank', 'noopener,noreferrer')
+    } catch {
+      showToast({ title: 'Erro', description: 'Falha ao baixar relatório.', variant: 'destructive' })
+    }
+  }
+
+  async function generateReport(type: ReportType, title: string) {
     try {
       const job = await reportsService.create({
-        name: `${type} - ${new Date().toLocaleDateString()}`,
-        type: type.toUpperCase() as any,
+        name: `${title} - ${new Date().toLocaleDateString()}`,
+        type,
         format: 'PDF',
       })
       showToast({ title: 'Gerando relatório', description: 'O relatório será baixado automaticamente.' })
       // Poll até completar
       const completed = await reportsService.pollUntilComplete(job.id)
       if (completed.fileUrl) {
-        window.open(reportsService.downloadUrl(job.id), '_blank')
+        window.open(await reportsService.downloadUrl(job.id), '_blank', 'noopener,noreferrer')
       }
     } catch (err) {
       showToast({ title: 'Erro', description: 'Falha ao gerar relatório.', variant: 'destructive' })
@@ -80,7 +89,7 @@ export default function Reports() {
               </div>
               <h3 className="font-bold text-brand-900 mb-1.5">{r.title}</h3>
               <p className="text-sm text-brand-300 mb-4 leading-relaxed">Gere um relatório completo em PDF.</p>
-              <Button className="w-full" onClick={() => generateReport(r.title.replace('Relatório de ', ''))}>Gerar Relatório</Button>
+              <Button className="w-full" onClick={() => generateReport(r.type, r.title)}>Gerar Relatório</Button>
             </Card>
           )
         })}
@@ -108,7 +117,7 @@ export default function Reports() {
                     <Td className="text-brand-500">{r.requestedBy}</Td>
                     <Td className="text-right">
                       {r.status === 'COMPLETED' ? (
-                        <button onClick={() => window.open(reportsService.downloadUrl(r.id), '_blank')} className="text-brand-500 hover:text-brand-800 inline-flex">
+                        <button onClick={() => downloadReport(r.id)} className="text-brand-500 hover:text-brand-800 inline-flex">
                           <Download className="h-4 w-4" />
                         </button>
                       ) : (

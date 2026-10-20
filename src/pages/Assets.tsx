@@ -53,7 +53,7 @@ export default function Assets() {
       const uniqueCats = ['Todas', ...new Set(res.data.map(a => a.categoryName || 'Outros'))]
       setCategories(uniqueCats)
     } catch (err) {
-      showToast('mensagem')
+      showToast({ title: 'Erro', description: 'Falha ao carregar patrimônio.', variant: 'destructive' })
     } finally {
       setLoading(false)
     }

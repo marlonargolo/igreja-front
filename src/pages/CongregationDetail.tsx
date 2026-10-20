@@ -14,7 +14,7 @@ import { useToast } from '@/components/ui/Extras'
 
 export default function CongregationDetail() {
   const { id } = useParams()
-  const { showToast } = useToast()
+  const showToast = useToast()
   const [tab, setTab] = useState('Visão Geral')
   const [congregation, setCongregation] = useState<any>(null)
   const [loading, setLoading] = useState(true)

@@ -52,7 +52,7 @@ export type CongregationPayload = Partial<Omit<Congregation, 'id' | 'churchName'
 
 export const congregationsService = {
   async list(params: CongregationListParams = {}) {
-    const response = await http.get<ApiSuccess<Congregation[]>>('/congregations', {
+    const response = await http.get<ApiSuccess<{ data: Congregation[]; meta: Record<string, unknown> }>>('/congregations', {
       page: params.page ?? 0,
       size: params.size ?? 20,
       ...params,
