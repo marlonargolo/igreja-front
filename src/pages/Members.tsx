@@ -13,9 +13,8 @@ import { useToast } from '@/components/ui/Extras'
 import { resolveLogoUrl } from '@/services/churches.service'
 
 const statusTone: Record<string, 'green' | 'gray' | 'blue'> = {
-  ACTIVE: 'green',
-  INACTIVE: 'gray',
-  VISITOR: 'blue',
+  ATIVO: 'green',
+  INATIVO: 'gray',
 }
 
 const PAGE_SIZE = 8
@@ -105,7 +104,7 @@ export default function Members() {
           <FilterSelect
             value={status}
             onChange={(v) => { setStatus(v); setPage(0) }}
-            options={['Todas', 'ACTIVE', 'INACTIVE', 'VISITOR']}
+            options={['Todas', 'ATIVO', 'INATIVO']}
             label="Status"
           />
           <FilterSelect

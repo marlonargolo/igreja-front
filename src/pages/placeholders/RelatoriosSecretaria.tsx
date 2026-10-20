@@ -90,22 +90,25 @@ export default function RelatoriosSecretaria() {
 
   const subOptions = SUB[grupo] || []
 
-  // Filtro de congregação aplicado CLIENT-SIDE só para apresentação
-  // (o backend já entregou apenas membros da Igreja correta)
+  // Filtro de unidade aplicado CLIENT-SIDE só para apresentação (o backend já
+  // entregou apenas membros da Igreja correta). "Sede" = membros sem
+  // Congregação vinculada; "Todas" = Igreja inteira, Sede + Congregações.
   const byCongreg = congFilter === 'Todas'
     ? members
-    : members.filter(m => String((m as any).congregationId) === congFilter)
+    : congFilter === 'Sede'
+      ? members.filter(m => !(m as any).congregationId)
+      : members.filter(m => String((m as any).congregationId) === congFilter)
 
   function congLabel() {
     if (congFilter === 'Todas') return 'Todas as Congregações'
+    if (congFilter === 'Sede') return church?.name ? `Sede — ${church.name}` : 'Sede'
     return congregations.find(c => String(c.id) === congFilter)?.name || ''
   }
 
   function statusToFilter(s: string): string {
     const lower = s.toLowerCase()
-    if (lower.includes('ativo') && !lower.includes('in')) return 'ACTIVE'
-    if (lower.includes('inativo')) return 'INACTIVE'
-    if (lower.includes('visitor') || lower.includes('congregado')) return 'VISITOR'
+    if (lower.includes('ativo') && !lower.includes('in')) return 'ATIVO'
+    if (lower.includes('inativo')) return 'INATIVO'
     return s.toUpperCase()
   }
 
@@ -269,10 +272,11 @@ export default function RelatoriosSecretaria() {
         </CardBody>
       </Card>
 
-      {/* Filtro de congregação — apenas congregações da Igreja do usuário */}
+      {/* Filtro de unidade — Sede + congregações da Igreja do usuário */}
       <Card className="mb-4 p-4">
-        <Select label="Congregação" value={congFilter} onChange={e => setCongFilter(e.target.value)}>
+        <Select label="Unidade" value={congFilter} onChange={e => setCongFilter(e.target.value)}>
           <option value="Todas">Todas as Congregações</option>
+          <option value="Sede">Sede{church?.name ? ` — ${church.name}` : ''}</option>
           {congregations.map(c => (
             <option key={c.id} value={String(c.id)}>{c.name}</option>
           ))}
