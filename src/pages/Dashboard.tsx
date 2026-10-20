@@ -107,19 +107,20 @@ export default function Dashboard() {
     >
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
         <MetricCard label="Total de Membros" value={m.totalMembers.toLocaleString()} icon={<Users className="h-4 w-4" />} />
-        {/* Congregação só vê os próprios membros — nenhum dado financeiro,
-            de patrimônio ou de usuários da Igreja aparece aqui. */}
+        <MetricCard label="Congregações" value={m.totalCongregations.toString()} icon={<Share2 className="h-4 w-4" />} />
+        {/* Dentro de uma Congregação, o painel mantém a mesma estrutura da
+            Igreja — só os dados financeiros e de patrimônio continuam fora,
+            como já era antes de abrir o acesso às demais métricas aqui. */}
         {!congregation && (
           <>
-            <MetricCard label="Congregações" value={m.totalCongregations.toString()} icon={<Share2 className="h-4 w-4" />} />
             <MetricCard label="Receitas do Mês" value={formatCurrency(m.monthlyRevenue)} icon={<TrendingUp className="h-4 w-4" />}
               subtext={m.pendingRevenue > 0 ? `+ ${formatCurrency(m.pendingRevenue)} pendente de confirmação` : undefined} />
             <MetricCard label="Despesas do Mês" value={formatCurrency(m.monthlyExpenses)} icon={<TrendingDown className="h-4 w-4" />} trendUp={false}
               subtext={m.pendingExpenses > 0 ? `+ ${formatCurrency(m.pendingExpenses)} pendente de confirmação` : undefined} />
             <MetricCard label="Patrimônio Total" value={formatCurrency(m.totalAssets)} icon={<Landmark className="h-4 w-4" />} />
-            <MetricCard label="Usuários Ativos" value={m.activeUsers.toString()} icon={<UsersRound className="h-4 w-4" />} />
           </>
         )}
+        <MetricCard label="Usuários Ativos" value={m.activeUsers.toString()} icon={<UsersRound className="h-4 w-4" />} />
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6 mb-6">
