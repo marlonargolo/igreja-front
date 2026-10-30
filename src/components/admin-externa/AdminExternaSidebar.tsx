@@ -3,28 +3,36 @@
 // Barra lateral exclusiva da Administração Externa — identidade visual
 // distinta (fundo slate-950 + acento âmbar) para deixar claro que esta é
 // uma central de controle global, separada do layout padrão do sistema.
+import { useEffect, useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutGrid, Building2, FileText, Blocks, CreditCard,
+  LayoutGrid, Building2, FileText, Calculator, CreditCard, Headphones,
   ScrollText, SlidersHorizontal, ChevronsLeft, ChevronsRight, X,
   ShieldHalf, LogOut, ArrowLeftRight,
 } from 'lucide-react'
 import { cn } from '@/lib/format'
 import { useApp } from '@/lib/AppContext'
+import { supportService } from '@/services/support.service'
 
 // "Congregações" e "Usuários" saíram daqui: eram entradas globais
 // redundantes com o acesso que já existe dentro de cada Igreja (Igrejas →
 // abrir uma Igreja → Congregações/Usuários daquela Igreja), duplicando
-// caminhos no menu sem necessidade.
+// caminhos no menu sem necessidade. "Módulos" também saiu: Patrimônio,
+// Secretaria e Tesouraria continuam só dentro de cada Igreja; Contabilidade
+// e Suporte, que o cliente pediu para operar por aqui, ganharam entrada
+// direta no lugar da página intermediária.
 const NAV = [
   { to: '/admin-externa/painel', label: 'Painel Geral', icon: LayoutGrid },
   { to: '/admin-externa/igrejas', label: 'Igrejas', icon: Building2 },
   { to: '/admin-externa/assinatura', label: 'Assinatura', icon: CreditCard },
+  { to: '/admin-externa/contabilidade', label: 'Contabilidade', icon: Calculator },
+  { to: '/admin-externa/suporte', label: 'Suporte', icon: Headphones },
   { to: '/admin-externa/documentos', label: 'Documentações', icon: FileText },
-  { to: '/admin-externa/modulos', label: 'Módulos', icon: Blocks },
   { to: '/admin-externa/auditoria', label: 'Auditoria', icon: ScrollText },
   { to: '/admin-externa/configuracoes', label: 'Configurações Globais', icon: SlidersHorizontal },
 ]
+
+const OPEN_TICKET_STATUSES = new Set(['ABERTO', 'EM_ATENDIMENTO', 'AGUARDANDO'])
 
 interface Props {
   collapsed: boolean
@@ -36,6 +44,15 @@ interface Props {
 export function AdminExternaSidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }: Props) {
   const { user, setUser, setChurch } = useApp()
   const navigate = useNavigate()
+  const [openTickets, setOpenTickets] = useState(0)
+
+  // Aviso de chamados pendentes: contagem real, sem valores simulados. Não há
+  // tempo real definido pelo cliente — recarrega ao montar o painel externo.
+  useEffect(() => {
+    supportService.list()
+      .then(list => setOpenTickets(list.filter(t => OPEN_TICKET_STATUSES.has(t.status)).length))
+      .catch(() => setOpenTickets(0))
+  }, [])
 
   function handleLogout() {
     localStorage.removeItem('igrejahub_access_token')
@@ -103,7 +120,17 @@ export function AdminExternaSidebar({ collapsed, onToggleCollapse, mobileOpen, o
               )}
               title={collapsed ? item.label : undefined}
             >
-              <item.icon className="h-[18px] w-[18px] shrink-0" />
+              <span className="relative shrink-0">
+                <item.icon className="h-[18px] w-[18px]" />
+                {item.to === '/admin-externa/suporte' && openTickets > 0 && (
+                  <span className={cn(
+                    'absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center',
+                    collapsed && '-top-1 -right-1',
+                  )}>
+                    {openTickets > 99 ? '99+' : openTickets}
+                  </span>
+                )}
+              </span>
               {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
             </NavLink>
           ))}

@@ -17,6 +17,8 @@ export interface SupportTicket {
   status: 'ABERTO' | 'EM_ATENDIMENTO' | 'AGUARDANDO' | 'RESOLVIDO' | 'FECHADO'
   criadoEm: string
   mensagens: SupportMessage[]
+  churchId?: number
+  churchName?: string
 }
 
 export const supportService = {

@@ -58,7 +58,8 @@ import IgrejaDetalhe from '@/pages/admin-externa/IgrejaDetalhe'
 import Congregacoes from '@/pages/admin-externa/Congregacoes'
 import Usuarios from '@/pages/admin-externa/Usuarios'
 import Documentos from '@/pages/admin-externa/Documentos'
-import Modulos from '@/pages/admin-externa/Modulos'
+import AdminExternaContabilidade from '@/pages/admin-externa/Contabilidade'
+import AdminExternaSuporte from '@/pages/admin-externa/Suporte'
 import Auditoria from '@/pages/admin-externa/Auditoria'
 import ConfiguracoesGlobais from '@/pages/admin-externa/ConfiguracoesGlobais'
 
@@ -142,7 +143,12 @@ export default function App() {
             <Route path="/admin-externa/congregacoes" element={withAdminExterna(<Congregacoes />)} />
             <Route path="/admin-externa/usuarios" element={withAdminExterna(<Usuarios />)} />
             <Route path="/admin-externa/documentos" element={withAdminExterna(<Documentos />)} />
-            <Route path="/admin-externa/modulos" element={withAdminExterna(<Modulos />)} />
+            <Route path="/admin-externa/contabilidade" element={withAdminExterna(<AdminExternaContabilidade />)} />
+            <Route path="/admin-externa/suporte" element={withAdminExterna(<AdminExternaSuporte />)} />
+            {/* Módulos (Patrimônio/Secretaria/Tesouraria) saiu do painel externo — essas
+                operações continuam dentro de cada Igreja. Contabilidade e Suporte, que o
+                cliente pediu para operar por aqui, têm entrada direta no menu agora. */}
+            <Route path="/admin-externa/modulos" element={<Navigate to="/admin-externa/contabilidade" replace />} />
             <Route path="/admin-externa/auditoria" element={withAdminExterna(<Auditoria />)} />
             <Route path="/admin-externa/configuracoes" element={withAdminExterna(<ConfiguracoesGlobais />)} />
 

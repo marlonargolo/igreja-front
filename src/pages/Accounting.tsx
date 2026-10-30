@@ -5,6 +5,7 @@ import {
   Building2, CheckSquare, Square, Check, Upload, Eye, X,
 } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
+import { AdminExternaLayout } from '@/components/admin-externa/AdminExternaLayout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Table, Thead, Tr, Th, Td } from '@/components/ui/Table'
 import { Badge } from '@/components/ui/Badge'
@@ -30,18 +31,34 @@ interface PeriodoFechado {
   igreja: string
 }
 
-export default function Accounting() {
+interface AccountingProps {
+  /** Renderizado dentro da Administração Externa: usa AdminExternaLayout e a
+   *  Igreja vem do escopo global (seletor do topo), não da sessão do usuário. */
+  isAdminExterna?: boolean
+  /** Igreja em escopo na Administração Externa (null = nenhuma selecionada). */
+  scopeChurch?: { id: string | number; name: string } | null
+}
+
+export default function Accounting({ isAdminExterna, scopeChurch }: AccountingProps = {}) {
   const location = useLocation()
   const showToast = useToast()
   const path = location.pathname
+  if (isAdminExterna) return <FechamentoContabil showToast={showToast} isAdminExterna scopeChurch={scopeChurch} />
   if (path.includes('exportacao')) return <ExportacaoContabil showToast={showToast} />
   if (path.includes('backup'))     return <BackupSistema showToast={showToast} />
   return <FechamentoContabil showToast={showToast} />
 }
 
-function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
+function FechamentoContabil({ showToast, isAdminExterna, scopeChurch }: {
+  showToast: (m: string) => void
+  isAdminExterna?: boolean
+  scopeChurch?: { id: string | number; name: string } | null
+}) {
   const { contasECaixas } = useConfig()
-  const { church: currentChurch, isRoot } = useApp()
+  const { church: appChurch, isRoot: appIsRoot } = useApp()
+  const currentChurch = isAdminExterna ? scopeChurch : appChurch
+  const isRoot = isAdminExterna ? false : appIsRoot
+  const LayoutComp: any = isAdminExterna ? AdminExternaLayout : Layout
   const [tab, setTab] = useState('Visão Geral')
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [congregations, setCongregations] = useState<Congregation[]>([])
@@ -77,7 +94,13 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
 
   const MESES_LABEL = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    setTransactions([])
+    setCongregations([])
+    setChurchFilter('Todas')
+    if (!isAdminExterna || currentChurch) load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChurch?.id])
 
   async function load() {
     setLoading(true)
@@ -231,8 +254,18 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
     return `${FILES_BASE}${url}`
   }
 
+  if (isAdminExterna && !currentChurch) {
+    return (
+      <AdminExternaLayout crumbs={[{ label: 'Contabilidade' }]} title="Contabilidade">
+        <p className="text-sm text-brand-400 bg-brand-50 rounded-lg px-4 py-3">
+          Selecione uma Igreja no seletor do topo para operar a Contabilidade dela.
+        </p>
+      </AdminExternaLayout>
+    )
+  }
+
   return (
-    <Layout crumbs={[{ label: 'Contabilidade' }, { label: 'Fechamento Mensal' }]} title="Contabilidade">
+    <LayoutComp crumbs={[{ label: 'Contabilidade' }, { label: 'Fechamento Mensal' }]} title="Contabilidade">
       <Tabs tabs={['Visão Geral', 'Lançamentos', 'Fechamento']} active={tab} onChange={setTab} className="mb-6" />
 
       {/* ── Visão Geral ── */}
@@ -582,7 +615,7 @@ function FechamentoContabil({ showToast }: { showToast: (m: string) => void }) {
           {uploadFile && <div className="bg-brand-50 border border-brand-100 rounded-lg px-4 py-3 text-sm"><p className="font-semibold">{uploadFile.name}</p></div>}
         </div>
       </Modal>
-    </Layout>
+    </LayoutComp>
   )
 }
 
