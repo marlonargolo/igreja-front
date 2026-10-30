@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Send, AlertCircle } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
+import { AdminExternaLayout } from '@/components/admin-externa/AdminExternaLayout'
 import { Card, CardBody } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -22,9 +23,10 @@ const PRIO_TONE: Record<string, 'red' | 'orange' | 'yellow' | 'gray'> = {
   URGENTE: 'red', ALTA: 'orange', MEDIA: 'yellow', BAIXA: 'gray',
 }
 
-export default function Chamados() {
+export default function Chamados({ isAdminExterna }: { isAdminExterna?: boolean } = {}) {
   const showToast = useToast()
   const { user } = useApp()
+  const LayoutComp: any = isAdminExterna ? AdminExternaLayout : Layout
   const [chamados, setChamados] = useState<SupportTicket[]>([])
   const [selected, setSelected] = useState<SupportTicket | null>(null)
   const [loading, setLoading] = useState(true)
@@ -69,6 +71,8 @@ export default function Chamados() {
         priority: t.priority || 'MEDIA',
         status: t.status,
         criadoEm: t.criadoEm || t.createdAt,
+        churchId: t.churchId,
+        churchName: t.churchName,
         mensagens: (t.mensagens || []).map((m: any) => ({
           id: m.id,
           autor: m.autor || m.author,
@@ -157,10 +161,10 @@ export default function Chamados() {
   )
 
   return (
-    <Layout
+    <LayoutComp
       crumbs={[{ label: 'Suporte' }, { label: 'Chamados' }]}
       title="Chamados de Suporte"
-      action={{ label: 'Abrir Chamado', icon: <Plus className="h-4 w-4" />, onClick: () => setOpenNovo(true) }}
+      action={isAdminExterna ? undefined : { label: 'Abrir Chamado', icon: <Plus className="h-4 w-4" />, onClick: () => setOpenNovo(true) }}
     >
       <div className="grid lg:grid-cols-3 gap-6" style={{ height: 'calc(100vh - 220px)', minHeight: 500 }}>
         {/* Lista */}
@@ -186,6 +190,9 @@ export default function Chamados() {
                   <p className="font-semibold text-brand-900 text-sm leading-tight">{c.titulo}</p>
                   <Badge tone={PRIO_TONE[c.priority]}>{c.priority}</Badge>
                 </div>
+                {isAdminExterna && c.churchName && (
+                  <p className="text-xs font-medium text-brand-500 mb-1">{c.churchName}</p>
+                )}
                 <p className="text-xs text-brand-300 mb-2">{c.category}</p>
                 <div className="flex items-center justify-between">
                   <Badge tone={STATUS_TONE[c.status]}>{STATUS_LABEL[c.status]}</Badge>
@@ -319,6 +326,6 @@ export default function Chamados() {
           </div>
         </form>
       </Modal>
-    </Layout>
+    </LayoutComp>
   )
 }

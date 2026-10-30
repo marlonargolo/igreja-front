@@ -13,6 +13,8 @@ export interface FinancialAccount {
   active: boolean
   churchId?: number
   churchName?: string
+  congregationId?: number
+  congregationName?: string
 }
 
 export interface FinancialTransfer {
@@ -34,6 +36,15 @@ export interface FinancialTransfer {
 export const financeAccountsService = {
   async listActive() {
     const res = await http.get<ApiSuccess<FinancialAccount[]>>('/finance/accounts/active')
+    return res.data || []
+  },
+
+  // Contas de uma unidade específica (sede quando congregationId é omitido,
+  // ou a Congregação informada) da Igreja em operação — usada pelo seletor
+  // em dois níveis (unidade → conta) das transferências financeiras.
+  async listActiveForUnit(congregationId?: number) {
+    const res = await http.get<ApiSuccess<FinancialAccount[]>>('/finance/accounts/by-unit',
+      congregationId ? { congregationId } : undefined)
     return res.data || []
   },
 

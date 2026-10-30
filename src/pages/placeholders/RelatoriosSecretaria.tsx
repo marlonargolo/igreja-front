@@ -7,7 +7,7 @@
  *   → exibe APENAS congregações da Igreja do usuário
  * - Relatório de Congregações: usa congregationsService
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Download } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { Card, CardBody } from '@/components/ui/Card'
@@ -33,7 +33,7 @@ const GRUPOS_RELATORIO = [
 
 export default function RelatoriosSecretaria() {
   const showToast = useToast()
-  const { church } = useApp()
+  const { church, congregation: enteredCongregation } = useApp()
   const { local } = useConfig()
 
   // Logo da Igreja, embutido no cabeçalho de todos os relatórios impressos.
@@ -56,20 +56,32 @@ export default function RelatoriosSecretaria() {
   const [members, setMembers]             = useState<Member[]>([])
   const [congregations, setCongregations] = useState<Congregation[]>([])
 
+  // Dentro de uma Congregação, o relatório fica sempre preso a ela — a opção
+  // "Todas as Congregações"/"Sede" só faz sentido vindo da sede.
   useEffect(() => {
+    setCongFilter(enteredCongregation ? String(enteredCongregation.id) : 'Todas')
+  }, [enteredCongregation?.id])
+
+  const requestSeq = useRef(0)
+
+  useEffect(() => {
+    const seq = ++requestSeq.current
+    setMembers([])
     Promise.all([
-      // Backend filtra pela Igreja do usuário — sem churchId manual
-      membersService.list({ size: 500 }) as any,
-      // congregationsService — só congregações da Igreja do usuário
+      // reportScope=true: pede a visão consolidada (sede + congregações) quando
+      // autorizado; o backend ignora isso e restringe à própria Congregação
+      // sempre que o usuário estiver operando dentro de uma.
+      membersService.list({ size: 500, reportScope: true }) as any,
       congregationsService.list({ page: 0, size: 200 }),
     ]).then(([mRes, cRes]) => {
+      if (seq !== requestSeq.current) return
       const mRaw = mRes as any
       setMembers(mRaw?.data?.data || mRaw?.data || mRaw?.content || [])
       const cRaw = (cRes as any)?.data
       const cList = cRaw?.data?.data || cRaw?.data || cRaw?.content || []
       setCongregations(Array.isArray(cList) ? cList : [])
-    }).catch(() => showToast('Falha ao carregar dados.'))
-  }, [])
+    }).catch(() => { if (seq === requestSeq.current) showToast('Falha ao carregar dados.') })
+  }, [enteredCongregation?.id])
 
   // Sub-opções dinâmicas do ConfigContext (isolado por Igreja via lsKey)
   const SUB: Record<string, string[]> = {
@@ -272,15 +284,24 @@ export default function RelatoriosSecretaria() {
         </CardBody>
       </Card>
 
-      {/* Filtro de unidade — Sede + congregações da Igreja do usuário */}
+      {/* Filtro de unidade. Dentro de uma Congregação, fica fixo nela — as
+          opções que ampliam a consulta (Todas/Sede/outra Congregação) só
+          aparecem quando operando a partir da sede. */}
       <Card className="mb-4 p-4">
-        <Select label="Unidade" value={congFilter} onChange={e => setCongFilter(e.target.value)}>
-          <option value="Todas">Todas as Congregações</option>
-          <option value="Sede">Sede{church?.name ? ` — ${church.name}` : ''}</option>
-          {congregations.map(c => (
-            <option key={c.id} value={String(c.id)}>{c.name}</option>
-          ))}
-        </Select>
+        {enteredCongregation ? (
+          <div>
+            <p className="text-xs font-semibold text-brand-300 uppercase mb-1">Unidade</p>
+            <p className="text-sm font-semibold text-brand-900">{enteredCongregation.name}</p>
+          </div>
+        ) : (
+          <Select label="Unidade" value={congFilter} onChange={e => setCongFilter(e.target.value)}>
+            <option value="Todas">Todas as Congregações</option>
+            <option value="Sede">Sede{church?.name ? ` — ${church.name}` : ''}</option>
+            {congregations.map(c => (
+              <option key={c.id} value={String(c.id)}>{c.name}</option>
+            ))}
+          </Select>
+        )}
       </Card>
 
       {/* Tipos de relatório */}

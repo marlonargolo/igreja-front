@@ -1,5 +1,5 @@
 // src/pages/Members.tsx
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Search, UserPlus, Pencil, ChevronDown } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
@@ -11,6 +11,7 @@ import { Pagination, EmptyState } from '@/components/ui/Misc'
 import { membersService, type Member } from '@/services'
 import { useToast } from '@/components/ui/Extras'
 import { resolveLogoUrl } from '@/services/churches.service'
+import { useApp } from '@/lib/AppContext'
 
 const statusTone: Record<string, 'green' | 'gray' | 'blue'> = {
   ATIVO: 'green',
@@ -22,6 +23,7 @@ const PAGE_SIZE = 8
 export default function Members() {
   const navigate = useNavigate()
   const showToast = useToast()
+  const { congregation: enteredCongregation } = useApp()
   const [query, setQuery] = useState('')
   const [congregation, setCongregation] = useState('Todas')
   const [status, setStatus] = useState('Todas')
@@ -31,15 +33,31 @@ export default function Members() {
   const [members, setMembers] = useState<Member[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [congregationOptions, setCongregationOptions] = useState<string[]>(['Todas'])
   const [roleOptions, setRoleOptions] = useState<string[]>(['Todas'])
 
+  // Troca de unidade (entrar/sair de uma Congregação): reinicia filtros e
+  // paginação que não fazem sentido no novo contexto, e limpa os dados da
+  // unidade anterior antes de buscar os da nova.
+  useEffect(() => {
+    setCongregation('Todas')
+    setPage(0)
+    setMembers([])
+    setCongregationOptions(['Todas'])
+  }, [enteredCongregation?.id])
+
+  const requestSeq = useRef(0)
+
   useEffect(() => {
     loadMembers()
-  }, [query, congregation, status, role, page])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, congregation, status, role, page, enteredCongregation?.id])
 
   async function loadMembers() {
+    const seq = ++requestSeq.current
     setLoading(true)
+    setLoadError(false)
     try {
       const params: any = {
         page,
@@ -50,6 +68,8 @@ export default function Members() {
         congregationId: congregation !== 'Todas' ? Number(congregation) : undefined,
       }
       const res = await membersService.list(params) as any
+      if (seq !== requestSeq.current) return // resposta antiga: não sobrescreve dados da unidade atual
+
       const list = res?.data?.data || res?.data?.content || res?.data || []
       const safeList = Array.isArray(list) ? list : []
       setMembers(safeList)
@@ -62,11 +82,13 @@ export default function Members() {
         setRoleOptions(['Todas', ...Array.from(roleSet) as string[]])
       }
     } catch (err: any) {
+      if (seq !== requestSeq.current) return
       showToast('Falha ao carregar membros.')
+      setLoadError(true)
       setMembers([])
       setTotal(0)
     } finally {
-      setLoading(false)
+      if (seq === requestSeq.current) setLoading(false)
     }
   }
 
@@ -119,6 +141,8 @@ export default function Members() {
       <Card>
         {loading ? (
           <div className="py-8 text-center">Carregando...</div>
+        ) : loadError ? (
+          <EmptyState title="Não foi possível carregar os membros" description="Ocorreu uma falha ao buscar os dados. Tente novamente." />
         ) : pageItems.length === 0 ? (
           <EmptyState title="Nenhum membro encontrado" description="Ajuste os filtros de busca ou cadastre um novo membro." />
         ) : (

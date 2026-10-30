@@ -41,6 +41,13 @@ export default function CongregarcoesPage() {
   // o backend devolva todas aqui (isolamento real é aplicado na hora de "Entrar").
   const isRestricted = !isRoot && user?.accessMainChurch === false
 
+  // Autorizar a sede não concede entrada automática em todas as congregações:
+  // a entrada operacional numa Congregação exige vínculo explícito
+  // (linkedCongregationIds), mesmo para quem também tem acesso à sede.
+  function canEnterCongregation(congId: number) {
+    return isRoot || (user?.linkedCongregationIds?.includes(congId) ?? false)
+  }
+
   const [congregations, setCongregations] = useState<Congregation[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -236,9 +243,13 @@ export default function CongregarcoesPage() {
                     </p>
                   )}
                   <div className="flex gap-2 mt-3 pt-3 border-t border-brand-100">
-                    <Button size="sm" onClick={() => handleEnter(c)}>
-                      <LogIn className="h-3.5 w-3.5" /> Entrar
-                    </Button>
+                    {canEnterCongregation(c.id) ? (
+                      <Button size="sm" onClick={() => handleEnter(c)}>
+                        <LogIn className="h-3.5 w-3.5" /> Entrar
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-brand-300 self-center">Sem acesso a esta unidade</span>
+                    )}
                     {canManage && (
                       <>
                         <Button size="sm" variant="outline" onClick={() => openEdit(c)}>
