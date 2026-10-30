@@ -4,7 +4,7 @@ import type { ApiSuccess } from '@/types/api'
 
 export type ReportType = 'MEMBERS' | 'FINANCIAL' | 'CONGREGATIONS' | 'ASSETS' | 'ACCOUNTING' | 'ACTIVITIES'
 export type ReportFormat = 'PDF' | 'XLSX' | 'CSV'
-export type ReportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'ERROR'
+export type ReportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'EXPIRED' | 'ERROR'
 
 export interface ReportJob {
   id: string
@@ -39,8 +39,24 @@ export const reportsService = {
     return res.data
   },
 
+  async pollUntilComplete(id: string, maxAttempts = 60, intervalMs = 2000): Promise<ReportJob> {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const job = await reportsService.get(id)
+      if (job.status === 'COMPLETED') return job
+      if (job.status === 'FAILED' || job.status === 'ERROR' || job.status === 'EXPIRED') {
+        throw new Error(job.errorMessage || 'Falha ao gerar relatório.')
+      }
+      if (attempt < maxAttempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, intervalMs))
+      }
+    }
+    throw new Error('Tempo limite ao aguardar relatório.')
+  },
+
   async downloadUrl(id: string) {
     const base = import.meta.env.VITE_API_BASE_URL ?? 'http://2.24.80.229:3000/api'
-    return `${base}/reports/${id}/download`
+    const res = await http.get<ApiSuccess<ReportJob>>(`/reports/${id}/download`)
+    if (!res.data.fileUrl) throw new Error('Relatório sem arquivo disponível.')
+    return new URL(res.data.fileUrl, base).href
   },
 }

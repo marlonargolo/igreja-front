@@ -151,8 +151,8 @@ export default function Receitas() {
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         <MetricCard label="Total"     value={formatCurrency(total)}    icon={<TrendingUp className="h-4 w-4" />} />
-        <MetricCard label="Pendentes" value={String(pending)}          icon={<TrendingUp className="h-4 w-4" />} tone="yellow" />
-        <MetricCard label="Confirmados" value={String(confirmed)}      icon={<TrendingUp className="h-4 w-4" />} tone="green" />
+        <MetricCard label="Pendentes" value={String(pending)}          icon={<TrendingUp className="h-4 w-4" />} iconBg="bg-yellow-100 text-yellow-800" />
+        <MetricCard label="Confirmados" value={String(confirmed)}      icon={<TrendingUp className="h-4 w-4" />} iconBg="bg-green-100 text-green-800" />
       </div>
 
       <Card>

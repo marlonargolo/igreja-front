@@ -24,7 +24,7 @@ export default function Settings() {
   useEffect(() => {
     settingsService.getOrganization()
       .then(data => setOrg(data))
-      .catch(() => showToast('mensagem'))
+      .catch(() => showToast({ title: 'Erro', description: 'Falha ao carregar configurações.', variant: 'destructive' }))
       .finally(() => setLoading(false))
   }, [])
 
@@ -42,7 +42,7 @@ export default function Settings() {
     setSaving(true)
     try {
       await settingsService.updateOrganization(org)
-      showToast('mensagem')
+      showToast({ title: 'Sucesso', description: 'Configurações salvas.' })
     } catch (err) {
       showToast({ title: 'Erro', description: 'Falha ao salvar.', variant: 'destructive' })
     } finally {

@@ -298,7 +298,7 @@ export default function UsersPage() {
     const result: Record<string, PermissionItem[]> = {}
     MODULES.forEach(mod => {
       result[mod.key] = availPerms.filter(p =>
-        mod.categories.includes(p.category as any) && mod.filter(p.name)
+        mod.categories.some(category => category === p.category) && mod.filter(p.name)
       )
     })
     return result

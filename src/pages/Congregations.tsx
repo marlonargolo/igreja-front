@@ -32,7 +32,7 @@ export default function Congregations() {
     // O backend já retorna apenas as congregações acessíveis para o usuário logado
     congregationsService.list({ page: 0, size: 100 })
       .then(res => {
-        const list = res.data?.data?.data || res.data?.data || res.data?.content || res.data || []
+        const list = res.data.data
         setCongregations(Array.isArray(list) ? list : [])
       })
       .catch(err => {

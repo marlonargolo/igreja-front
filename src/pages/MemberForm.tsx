@@ -89,9 +89,14 @@ export default function MemberForm() {
       showToast('Preencha nome e e-mail.')
       return
     }
+    const churchId = Number(church?.id)
+    if (!Number.isSafeInteger(churchId) || churchId <= 0) {
+      showToast('Selecione uma igreja válida antes de salvar o membro.')
+      return
+    }
     setSaving(true)
     const payload = {
-      churchId: church?.id ? Number(church.id) : undefined,
+      churchId,
       name: formData.name,
       email: formData.email,
       phone: formData.phone || undefined,

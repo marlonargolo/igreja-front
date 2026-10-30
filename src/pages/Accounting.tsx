@@ -54,7 +54,7 @@ function FechamentoContabil({ showToast, isAdminExterna, scopeChurch }: {
   isAdminExterna?: boolean
   scopeChurch?: { id: string | number; name: string } | null
 }) {
-  const { config } = useConfig()
+  const { contasECaixas } = useConfig()
   const { church: appChurch, isRoot: appIsRoot } = useApp()
   const currentChurch = isAdminExterna ? scopeChurch : appChurch
   const isRoot = isAdminExterna ? false : appIsRoot
@@ -339,7 +339,7 @@ function FechamentoContabil({ showToast, isAdminExterna, scopeChurch }: {
               </Select>
               <Select label="Conta" value={contaFilter} onChange={e => setContaFilter(e.target.value)}>
                 <option value="Todas">Todas as Contas</option>
-                {(config?.contasECaixas ?? []).map(c => <option key={c} value={c}>{c}</option>)}
+                {contasECaixas.map(c => <option key={c} value={c}>{c}</option>)}
               </Select>
               <Select label="Tipo" value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
                 <option value="Todas">Receitas e Despesas</option>
@@ -622,7 +622,7 @@ function FechamentoContabil({ showToast, isAdminExterna, scopeChurch }: {
 // ─── Exportação ───────────────────────────────────────────────────────────────
 function ExportacaoContabil({ showToast }: { showToast: (m: string) => void }) {
   const { church: currentChurch, isRoot } = useApp()
-  const { config } = useConfig()
+  const { contasECaixas } = useConfig()
   const [dataIni, setDataIni] = useState(`${new Date().getFullYear() - 1}-01-01`)
   const [dataFim, setDataFim] = useState(`${new Date().getFullYear()}-12-31`)
   const [formato, setFormato] = useState('ALTERDATA')

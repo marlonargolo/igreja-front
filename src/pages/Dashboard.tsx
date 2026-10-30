@@ -50,7 +50,7 @@ export default function Dashboard() {
     ])
       .then(([metricsData, congregationsRes]) => {
         setMetrics(metricsData)
-        setCongregations(congregationsRes.data?.data || congregationsRes.data || [])
+        setCongregations(congregationsRes.data.data)
       })
       .catch((err) => {
         console.error('Erro ao carregar dashboard:', err)

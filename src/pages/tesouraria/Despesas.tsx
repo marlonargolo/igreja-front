@@ -164,7 +164,7 @@ export default function Despesas() {
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <MetricCard label="Total Despesas" value={formatCurrency(total)}    icon={<TrendingDown className="h-4 w-4" />} />
-        <MetricCard label="Pendentes"       value={String(pending)}         icon={<TrendingDown className="h-4 w-4" />} tone="yellow" />
+        <MetricCard label="Pendentes"       value={String(pending)}         icon={<TrendingDown className="h-4 w-4" />} iconBg="bg-yellow-100 text-yellow-800" />
         <MetricCard label="Lançamentos"     value={String(transactions.length)} icon={<TrendingDown className="h-4 w-4" />} />
       </div>
 
