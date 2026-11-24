@@ -70,7 +70,7 @@ export interface MemberTransfer {
   memberName: string
   fromCongregationId?: number
   fromCongregationName?: string
-  toCongregationId: number
+  toCongregationId?: number
   toCongregationName: string
   reason?: string
   transferredAt: string
@@ -130,8 +130,9 @@ export const membersService = {
     await http.delete(`/members/${memberId}/documents/${documentId}`)
   },
 
-  // Transferência de membro entre Congregações da mesma Igreja.
-  async transfer(memberId: number, toCongregationId: number, reason?: string) {
+  // Transferência de membro entre Congregações da mesma Igreja, ou de volta
+  // para a sede quando toCongregationId é null.
+  async transfer(memberId: number, toCongregationId: number | null, reason?: string) {
     const res = await http.post<ApiSuccess<MemberTransfer>>(`/members/${memberId}/transfer`, {
       toCongregationId,
       reason: reason || undefined,

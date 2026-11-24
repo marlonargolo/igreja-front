@@ -17,9 +17,13 @@ import { Table, Thead, Tr, Th, Td } from '@/components/ui/Table'
 import { useToast } from '@/components/ui/Extras'
 import { membersService, type MemberTransfer } from '@/services'
 import { congregationsService, type Congregation } from '@/services/congregations.service'
+import { useApp } from '@/lib/AppContext'
+
+const SEDE_DESTINO = 'SEDE'
 
 export default function SecretariaTransferencias() {
   const showToast = useToast()
+  const { church } = useApp()
   const [members, setMembers]         = useState<any[]>([])
   const [congregations, setCongregations] = useState<Congregation[]>([])
   const [transfers, setTransfers]     = useState<MemberTransfer[]>([])
@@ -71,7 +75,8 @@ export default function SecretariaTransferencias() {
     }
     setSaving(true)
     try {
-      await membersService.transfer(Number(form.memberId), Number(form.congregacaoDestino), form.motivo)
+      const destinoId = form.congregacaoDestino === SEDE_DESTINO ? null : Number(form.congregacaoDestino)
+      await membersService.transfer(Number(form.memberId), destinoId, form.motivo)
       showToast('Transferência registrada com sucesso.')
       setOpen(false)
       setForm({ memberId: '', congregacaoDestino: '', motivo: '' })
@@ -174,11 +179,14 @@ export default function SecretariaTransferencias() {
           )}
 
           <Select
-            label="Congregação Destino"
+            label="Unidade Destino"
             value={form.congregacaoDestino}
             onChange={e => setForm({ ...form, congregacaoDestino: e.target.value })}
           >
-            <option value="">— Selecione a congregação destino —</option>
+            <option value="">— Selecione a unidade destino —</option>
+            {(!selectedMember || selectedMember.congregationId) && (
+              <option value={SEDE_DESTINO}>{church?.name ? `Sede — ${church.name}` : 'Sede'}</option>
+            )}
             {congregations
               .filter(c => !selectedMember || String(c.id) !== String(selectedMember.congregationId))
               .map(c => (

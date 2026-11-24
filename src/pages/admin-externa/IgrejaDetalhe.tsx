@@ -1,7 +1,7 @@
 // src/pages/admin-externa/IgrejaDetalhe.tsx
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, MapPin, Phone, Mail, Users, FileText, ScrollText, Church as ChurchIcon } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Mail, Users, FileText, ScrollText, Church as ChurchIcon, CreditCard } from 'lucide-react'
 import { AdminExternaLayout } from '@/components/admin-externa/AdminExternaLayout'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -10,6 +10,10 @@ import { EmptyState } from '@/components/ui/Misc'
 import { useToast } from '@/components/ui/Extras'
 import { churchesService, resolveLogoUrl, type Church } from '@/services/churches.service'
 import { adminService, type AuditLogEntry } from '@/services/admin.service'
+import { http } from '@/lib/http'
+import type { ApiSuccess } from '@/types/api'
+
+interface PlanInfo { id: number; name: string }
 
 export default function IgrejaDetalhe() {
   const { id } = useParams()
@@ -21,6 +25,7 @@ export default function IgrejaDetalhe() {
   const [users, setUsers] = useState<any[]>([])
   const [documents, setDocuments] = useState<any[]>([])
   const [history, setHistory] = useState<AuditLogEntry[]>([])
+  const [plan, setPlan] = useState<PlanInfo | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -32,8 +37,11 @@ export default function IgrejaDetalhe() {
       adminService.churchUsers(id).catch(() => []),
       adminService.churchDocuments(id).catch(() => []),
       adminService.churchAudit(id).then(r => r.data).catch(() => []),
-    ]).then(([c, congs, us, docs, hist]) => {
+      http.get<ApiSuccess<PlanInfo[]>>('/plans').then(r => r.data || []).catch(() => []),
+    ]).then(([c, congs, us, docs, hist, plans]) => {
       setChurch(c); setCongregations(congs); setUsers(us); setDocuments(docs); setHistory(hist)
+      const planId = (c as any)?.planId
+      setPlan(planId ? (plans as PlanInfo[]).find(p => p.id === planId) || null : null)
       if (!c) showToast('Falha ao carregar detalhes da igreja.')
     }).finally(() => setLoading(false))
   }, [id])
@@ -76,6 +84,23 @@ export default function IgrejaDetalhe() {
                 <Metric label="Usuários" value={users.length} />
                 <Metric label="Documentos" value={documents.length} />
               </div>
+            </div>
+          </Card>
+
+          <Card className="p-5">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <CreditCard className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs text-brand-300 uppercase font-semibold">Plano atual</p>
+                  <p className="text-base font-bold text-brand-900">{plan?.name || 'Nenhum plano atribuído'}</p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => navigate(`/admin-externa/assinatura?churchId=${church.id}`)}>
+                Alterar plano
+              </Button>
             </div>
           </Card>
 
